@@ -927,104 +927,8 @@ private fun ArtistContent(
             if (sections.incompleteAlbums) {
                 item { Text("Some sources could not be loaded. Showing albums from the other sources.") }
             }
-            // Owned / Library Sections
-            item {
-                SectionRow(
-                    artist = artist,
-                    sectionData = sections.library,
-                    id = "library_albums",
-                    title = "Owned Albums".toDisplayString(),
-                    initiallyExpanded = true,
-                    onNavigateClick = onNavigateClick,
-                    onNavigateToList = onNavigateToList,
-                    onPlayChildClick = onPlayChildClick,
-                    playlistActions = playlistActions,
-                    libraryActions = libraryActions,
-                    providerIconFetcher = providerIconFetcher,
-                )
-            }
 
-            item {
-                SectionRow(
-                    artist = artist,
-                    sectionData = sections.libraryEps,
-                    id = "library_eps",
-                    title = "Owned EPs".toDisplayString(),
-                    initiallyExpanded = true,
-                    onNavigateClick = onNavigateClick,
-                    onNavigateToList = onNavigateToList,
-                    onPlayChildClick = onPlayChildClick,
-                    playlistActions = playlistActions,
-                    libraryActions = libraryActions,
-                    providerIconFetcher = providerIconFetcher,
-                )
-            }
-
-            item {
-                SectionRow(
-                    artist = artist,
-                    sectionData = sections.librarySingles,
-                    id = "library_singles",
-                    title = "Owned Singles".toDisplayString(),
-                    initiallyExpanded = true,
-                    onNavigateClick = onNavigateClick,
-                    onNavigateToList = onNavigateToList,
-                    onPlayChildClick = onPlayChildClick,
-                    playlistActions = playlistActions,
-                    libraryActions = libraryActions,
-                    providerIconFetcher = providerIconFetcher,
-                )
-            }
-
-            // Provider / All Sections
-            item {
-                SectionRow(
-                    artist = artist,
-                    sectionData = sections.all,
-                    id = "all_albums",
-                    title = "All Albums".toDisplayString(),
-                    initiallyExpanded = false,
-                    onNavigateClick = onNavigateClick,
-                    onNavigateToList = onNavigateToList,
-                    onPlayChildClick = onPlayChildClick,
-                    playlistActions = playlistActions,
-                    libraryActions = libraryActions,
-                    providerIconFetcher = providerIconFetcher,
-                )
-            }
-
-            item {
-                SectionRow(
-                    artist = artist,
-                    sectionData = sections.allEps,
-                    id = "all_eps",
-                    title = "All EPs".toDisplayString(),
-                    initiallyExpanded = false,
-                    onNavigateClick = onNavigateClick,
-                    onNavigateToList = onNavigateToList,
-                    onPlayChildClick = onPlayChildClick,
-                    playlistActions = playlistActions,
-                    libraryActions = libraryActions,
-                    providerIconFetcher = providerIconFetcher,
-                )
-            }
-
-            item {
-                SectionRow(
-                    artist = artist,
-                    sectionData = sections.allSingles,
-                    id = "all_singles",
-                    title = "All Singles".toDisplayString(),
-                    initiallyExpanded = false,
-                    onNavigateClick = onNavigateClick,
-                    onNavigateToList = onNavigateToList,
-                    onPlayChildClick = onPlayChildClick,
-                    playlistActions = playlistActions,
-                    libraryActions = libraryActions,
-                    providerIconFetcher = providerIconFetcher,
-                )
-            }
-
+            // Top Tracks
             item {
                 SectionRow(
                     artist = artist,
@@ -1034,6 +938,55 @@ private fun ArtistContent(
                     onNavigateClick = onNavigateClick,
                     onNavigateToList = onNavigateToList,
                     onFilterSelected = onTrackMappingChanged,
+                    onPlayChildClick = onPlayChildClick,
+                    playlistActions = playlistActions,
+                    libraryActions = libraryActions,
+                    providerIconFetcher = providerIconFetcher,
+                )
+            }
+
+            // Albums (Unified owned + streaming, chronologically sorted newest first)
+            item {
+                SectionRow(
+                    artist = artist,
+                    sectionData = sections.albums,
+                    id = "albums",
+                    title = "Albums".toDisplayString(),
+                    onNavigateClick = onNavigateClick,
+                    onNavigateToList = onNavigateToList,
+                    onFilterSelected = onAlbumMappingChanged,
+                    onPlayChildClick = onPlayChildClick,
+                    playlistActions = playlistActions,
+                    libraryActions = libraryActions,
+                    providerIconFetcher = providerIconFetcher,
+                )
+            }
+
+            // EPs (Unified owned + streaming, chronologically sorted newest first)
+            item {
+                SectionRow(
+                    artist = artist,
+                    sectionData = sections.eps,
+                    id = "eps",
+                    title = "EPs".toDisplayString(),
+                    onNavigateClick = onNavigateClick,
+                    onNavigateToList = onNavigateToList,
+                    onPlayChildClick = onPlayChildClick,
+                    playlistActions = playlistActions,
+                    libraryActions = libraryActions,
+                    providerIconFetcher = providerIconFetcher,
+                )
+            }
+
+            // Singles (Unified owned + streaming, chronologically sorted newest first)
+            item {
+                SectionRow(
+                    artist = artist,
+                    sectionData = sections.singles,
+                    id = "singles",
+                    title = "Singles".toDisplayString(),
+                    onNavigateClick = onNavigateClick,
+                    onNavigateToList = onNavigateToList,
                     onPlayChildClick = onPlayChildClick,
                     playlistActions = playlistActions,
                     libraryActions = libraryActions,
@@ -1050,7 +1003,6 @@ private fun <T : AppMediaItem> SectionRow(
     sectionData: DataState<Section<T>>,
     id: String,
     title: DisplayString,
-    initiallyExpanded: Boolean? = null,
     onNavigateClick: (AppMediaItem) -> Unit,
     onNavigateToList: (String, ItemList) -> Unit,
     onFilterSelected: (ProviderMapping) -> Unit = {},
@@ -1059,63 +1011,35 @@ private fun <T : AppMediaItem> SectionRow(
     libraryActions: LibraryActions,
     providerIconFetcher: @Composable ((Modifier, String) -> Unit),
 ) {
-    Column {
-        var expanded by rememberSaveable(artist.uri, id) { mutableStateOf(initiallyExpanded ?: true) }
-        val heading: (@Composable () -> Unit)? = if (initiallyExpanded != null) {
-            {
-                TextButton(onClick = { expanded = !expanded }) {
-                    Text(title.string() + if (expanded) " ▴" else " ▾")
-                }
-            }
-        } else null
-        if (initiallyExpanded != null) {
-            if (!expanded || sectionData !is DataState.Data || sectionData.data.items.isEmpty()) {
-                heading?.invoke()
-            }
-            if (!expanded) return@Column
-            if (sectionData is DataState.Data && sectionData.data.items.isEmpty()) {
-                if (id == "library_albums" || id == "library") {
-                    Text("No local albums or synced Bandcamp purchases.")
-                    return@Column
-                }
-                return@Column
-            }
-            if (sectionData is DataState.Error) {
-                Text("Could not load albums. Check the connection and try opening this artist again.")
-                return@Column
-            }
-        }
-        CategoryRow(
-            data = sectionData,
-            heading = heading,
-            containerItem = artist,
-            itemCategoryProvider = { section ->
-                ItemCategory(
-                    id = id,
-                    title = title,
-                    items = section.items,
-                    list = section.itemList,
-                    filter = if (section.providerDomain != null && artist.providerMappings != null) {
-                        ItemCategory.Filter(
-                            label = section.providerDomain.toDisplayString(),
-                            options = artist.providerMappings,
-                            labelTransform = { it.providerDomain.toDisplayString() },
-                            contentDescription = Res.string.cd_provider_filter,
-                        )
-                    } else {
-                        null
-                    },
-                )
-            },
-            onNavigateClick = onNavigateClick,
-            onNavigateToList = onNavigateToList,
-            onOptionSelected = onFilterSelected,
-            onPlayClick = onPlayChildClick,
-            playlistActions = playlistActions,
-            libraryActions = libraryActions,
-            providerIconFetcher = providerIconFetcher,
-        )
-    }
+    CategoryRow(
+        data = sectionData,
+        containerItem = artist,
+        itemCategoryProvider = { section ->
+            ItemCategory(
+                id = id,
+                title = title,
+                items = section.items,
+                list = section.itemList,
+                filter = if (section.providerDomain != null && artist.providerMappings != null) {
+                    ItemCategory.Filter(
+                        label = section.providerDomain.toDisplayString(),
+                        options = artist.providerMappings,
+                        labelTransform = { it.providerDomain.toDisplayString() },
+                        contentDescription = Res.string.cd_provider_filter,
+                    )
+                } else {
+                    null
+                },
+            )
+        },
+        onNavigateClick = onNavigateClick,
+        onNavigateToList = onNavigateToList,
+        onOptionSelected = onFilterSelected,
+        onPlayClick = onPlayChildClick,
+        playlistActions = playlistActions,
+        libraryActions = libraryActions,
+        providerIconFetcher = providerIconFetcher,
+    )
 }
 
 @Composable

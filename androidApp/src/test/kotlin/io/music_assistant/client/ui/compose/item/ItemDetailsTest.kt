@@ -74,7 +74,7 @@ class ItemDetailsTest {
                     itemState = DataState.Data(artist),
                     albumsState = DataState.NoData(),
                     playableItemsState = DataState.NoData(),
-                    artistSections = ArtistSections(library = DataState.Data(Section(albums))),
+                    artistSections = ArtistSections(albums = DataState.Data(Section(albums))),
                 ),
                 geEditablePlaylists = suspend { emptyList() },
                 fetchColors = NoColors,
@@ -104,24 +104,20 @@ class ItemDetailsTest {
     }
 
     @Test
-    @GraphicsMode(GraphicsMode.Mode.NATIVE)
-    fun `owned albums start open and all albums expand on request`() {
+    fun `displays artists with unified albums`() {
         val artist = AppMediaItemFixtures.artist()
         val owned = AppMediaItemFixtures.album(artist = artist).copy(name = "Local purchase")
         val streaming = AppMediaItemFixtures.album(artist = artist).copy(name = "Streaming exclusive")
-        val allList = ItemList.ArtistAlbumGroup(artist.provider, artist.itemId, owned = false)
+        val allList = ItemList.ArtistAlbumGroup(artist.provider, artist.itemId, owned = false, groupType = "album")
         var navigatedTo: Pair<String, ItemList>? = null
-        lateinit var renderedView: View
         composeTestRule.setInspectableContent {
-            renderedView = LocalView.current
             ItemDetails(
                 state = ItemDetailsViewModel.State(
                     itemState = DataState.Data(artist),
                     albumsState = DataState.NoData(),
                     playableItemsState = DataState.NoData(),
                     artistSections = ArtistSections(
-                        library = DataState.Data(Section(listOf(owned))),
-                        all = DataState.Data(Section(listOf(owned, streaming), itemList = allList)),
+                        albums = DataState.Data(Section(listOf(owned, streaming), itemList = allList)),
                     ),
                 ),
                 geEditablePlaylists = suspend { emptyList() },
@@ -131,21 +127,10 @@ class ItemDetailsTest {
         }
         composeTestRule.inScrollable("LazyVerticalGrid") {
             onNode(hasContentDescription(Res.string.cd_album_item.get(owned.displayName, owned.provider))).assertIsDisplayed()
-            onNode(hasText("All albums ▾")).performClick()
             onNode(hasContentDescription(Res.string.cd_album_item.get(streaming.displayName, streaming.provider))).assertIsDisplayed()
-            val screenshot = File("build/outputs/album-groups/expanded.png")
-            screenshot.parentFile?.mkdirs()
-            composeTestRule.runOnIdle {
-                val view = renderedView.rootView
-                val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
-                view.draw(Canvas(bitmap))
-                screenshot.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-            }
-            onNode(hasContentDescription(Res.string.cd_view_all.get("All albums"))).performClick()
-            assertEquals("All albums" to allList, navigatedTo)
-            onNode(hasText("All albums ▴")).performClick()
+            onNode(hasContentDescription(Res.string.cd_view_all.get("Albums"))).performClick()
+            assertEquals("Albums" to allList, navigatedTo)
         }
-        composeTestRule.onNodeWithContentDescription(Res.string.cd_album_item.get(streaming.displayName, streaming.provider)).assertDoesNotExist()
     }
 
     @Test

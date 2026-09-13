@@ -104,6 +104,6 @@ class GitHubUpdateChecker(
     }
 
     companion object {
-        const val CURRENT_APP_VERSION = "0.14.0-owned"
+        const val CURRENT_APP_VERSION = "0.14.3-owned"
     }
 }

@@ -247,8 +247,25 @@ class ItemDetailsViewModel(
             val result = mediaItemRepository.fetchAlbumGroups(artist.itemId, artist.provider)
             _state.update { state ->
                 val groups = result.getOrNull()
-                val (ownedAlbums, ownedEps, ownedSingles) = if (groups != null) {
-                    val sorted = groups.owned.sortedWith(compareByDescending<Album> { it.year ?: 0 }.thenBy { it.displayName })
+                val (mergedAlbums, mergedEps, mergedSingles) = if (groups != null) {
+                    val seen = mutableSetOf<String>()
+                    val list = mutableListOf<Album>()
+                    // 1. First add owned albums (local files, bandcamp) so they take precedence
+                    for (item in groups.owned) {
+                        val key = item.name.trim().lowercase() + "|" + (item.year ?: "")
+                        seen.add(key)
+                        list.add(item)
+                    }
+                    // 2. Add streaming/catalog albums, deduping against owned copies
+                    for (item in groups.all) {
+                        val key = item.name.trim().lowercase() + "|" + (item.year ?: "")
+                        if (key !in seen) {
+                            seen.add(key)
+                            list.add(item)
+                        }
+                    }
+                    // 3. Sort chronologically descending: newest release first!
+                    val sorted = list.sortedWith(compareByDescending<Album> { it.year ?: 0 }.thenBy { it.displayName })
                     Triple(
                         sorted.filter { it.albumType != io.music_assistant.client.data.model.client.AlbumType.EP && it.albumType != io.music_assistant.client.data.model.client.AlbumType.SINGLE },
                         sorted.filter { it.albumType == io.music_assistant.client.data.model.client.AlbumType.EP },
@@ -256,52 +273,37 @@ class ItemDetailsViewModel(
                     )
                 } else Triple(null, null, null)
 
-                val (allAlbums, allEps, allSingles) = if (groups != null) {
-                    val sorted = groups.all.sortedWith(compareByDescending<Album> { it.year ?: 0 }.thenBy { it.displayName })
-                    Triple(
-                        sorted.filter { it.albumType != io.music_assistant.client.data.model.client.AlbumType.EP && it.albumType != io.music_assistant.client.data.model.client.AlbumType.SINGLE },
-                        sorted.filter { it.albumType == io.music_assistant.client.data.model.client.AlbumType.EP },
-                        sorted.filter { it.albumType == io.music_assistant.client.data.model.client.AlbumType.SINGLE },
-                    )
-                } else Triple(null, null, null)
+                val albumsSection = mergedAlbums?.let {
+                    DataState.Data(Section(
+                        items = it.take(ARTIST_SECTION_LIMIT),
+                        itemList = ItemList.ArtistAlbumGroup(artist.provider, artist.itemId, owned = false, groupType = "album"),
+                    ))
+                } ?: DataState.Error()
+
+                val epsSection = mergedEps?.let {
+                    DataState.Data(Section(
+                        items = it.take(ARTIST_SECTION_LIMIT),
+                        itemList = ItemList.ArtistAlbumGroup(artist.provider, artist.itemId, owned = false, groupType = "ep"),
+                    ))
+                } ?: DataState.Error()
+
+                val singlesSection = mergedSingles?.let {
+                    DataState.Data(Section(
+                        items = it.take(ARTIST_SECTION_LIMIT),
+                        itemList = ItemList.ArtistAlbumGroup(artist.provider, artist.itemId, owned = false, groupType = "single"),
+                    ))
+                } ?: DataState.Error()
 
                 state.copy(artistSections = state.artistSections.copy(
-                    library = ownedAlbums?.let {
-                        DataState.Data(Section(
-                            items = it.take(ARTIST_SECTION_LIMIT),
-                            itemList = ItemList.ArtistAlbumGroup(artist.provider, artist.itemId, owned = true, groupType = "album"),
-                        ))
-                    } ?: DataState.Error(),
-                    libraryEps = ownedEps?.let {
-                        DataState.Data(Section(
-                            items = it.take(ARTIST_SECTION_LIMIT),
-                            itemList = ItemList.ArtistAlbumGroup(artist.provider, artist.itemId, owned = true, groupType = "ep"),
-                        ))
-                    } ?: DataState.Error(),
-                    librarySingles = ownedSingles?.let {
-                        DataState.Data(Section(
-                            items = it.take(ARTIST_SECTION_LIMIT),
-                            itemList = ItemList.ArtistAlbumGroup(artist.provider, artist.itemId, owned = true, groupType = "single"),
-                        ))
-                    } ?: DataState.Error(),
-                    all = allAlbums?.let {
-                        DataState.Data(Section(
-                            items = it.take(ARTIST_SECTION_LIMIT),
-                            itemList = ItemList.ArtistAlbumGroup(artist.provider, artist.itemId, owned = false, groupType = "album"),
-                        ))
-                    } ?: DataState.Error(),
-                    allEps = allEps?.let {
-                        DataState.Data(Section(
-                            items = it.take(ARTIST_SECTION_LIMIT),
-                            itemList = ItemList.ArtistAlbumGroup(artist.provider, artist.itemId, owned = false, groupType = "ep"),
-                        ))
-                    } ?: DataState.Error(),
-                    allSingles = allSingles?.let {
-                        DataState.Data(Section(
-                            items = it.take(ARTIST_SECTION_LIMIT),
-                            itemList = ItemList.ArtistAlbumGroup(artist.provider, artist.itemId, owned = false, groupType = "single"),
-                        ))
-                    } ?: DataState.Error(),
+                    albums = albumsSection,
+                    eps = epsSection,
+                    singles = singlesSection,
+                    library = albumsSection,
+                    libraryEps = epsSection,
+                    librarySingles = singlesSection,
+                    all = albumsSection,
+                    allEps = epsSection,
+                    allSingles = singlesSection,
                     incompleteAlbums = groups?.unavailableSources?.isNotEmpty() == true,
                 ))
             }
@@ -360,15 +362,17 @@ class ItemDetailsViewModel(
             ).filterIsInstance<Album>()
 
             _state.update {
+                val sec = DataState.Data(
+                    Section(
+                        albums.take(ARTIST_SECTION_LIMIT),
+                        providerDomain = mapping.providerDomain,
+                        itemList = ItemList.ArtistAlbums(providerInstance, itemId),
+                    ),
+                )
                 it.copy(
                     artistSections = it.artistSections.copy(
-                        all = DataState.Data(
-                            Section(
-                                albums.take(ARTIST_SECTION_LIMIT),
-                                providerDomain = mapping.providerDomain,
-                                itemList = ItemList.ArtistAlbums(providerInstance, itemId),
-                            ),
-                        ),
+                        albums = sec,
+                        all = sec,
                     ),
                 )
             }
@@ -689,24 +693,15 @@ class ItemDetailsViewModel(
                     _state.update { s ->
                         s.copy(
                             artistSections = sections.copy(
-                                library = sections.library.map {
-                                    it.copy(items = it.items.replacing(changed))
-                                },
-                                libraryEps = sections.libraryEps.map {
-                                    it.copy(items = it.items.replacing(changed))
-                                },
-                                librarySingles = sections.librarySingles.map {
-                                    it.copy(items = it.items.replacing(changed))
-                                },
-                                all = sections.all.map {
-                                    it.copy(items = it.items.replacing(changed))
-                                },
-                                allEps = sections.allEps.map {
-                                    it.copy(items = it.items.replacing(changed))
-                                },
-                                allSingles = sections.allSingles.map {
-                                    it.copy(items = it.items.replacing(changed))
-                                },
+                                albums = sections.albums.map { it.copy(items = it.items.replacing(changed)) },
+                                eps = sections.eps.map { it.copy(items = it.items.replacing(changed)) },
+                                singles = sections.singles.map { it.copy(items = it.items.replacing(changed)) },
+                                library = sections.albums.map { it.copy(items = it.items.replacing(changed)) },
+                                libraryEps = sections.eps.map { it.copy(items = it.items.replacing(changed)) },
+                                librarySingles = sections.singles.map { it.copy(items = it.items.replacing(changed)) },
+                                all = sections.albums.map { it.copy(items = it.items.replacing(changed)) },
+                                allEps = sections.eps.map { it.copy(items = it.items.replacing(changed)) },
+                                allSingles = sections.singles.map { it.copy(items = it.items.replacing(changed)) },
                             ),
                         )
                     }
@@ -788,32 +783,41 @@ data class ArtistSections(
     val library: DataState<Section<Album>> = DataState.Loading(),
     val libraryEps: DataState<Section<Album>> = DataState.Loading(),
     val librarySingles: DataState<Section<Album>> = DataState.Loading(),
-    val all: DataState<Section<Album>> = DataState.Loading(),
-    val allEps: DataState<Section<Album>> = DataState.Loading(),
-    val allSingles: DataState<Section<Album>> = DataState.Loading(),
     val topTracks: DataState<Section<Track>> = DataState.Loading(),
     val incompleteAlbums: Boolean = false,
+    val albums: DataState<Section<Album>> = library,
+    val eps: DataState<Section<Album>> = libraryEps,
+    val singles: DataState<Section<Album>> = librarySingles,
+    val all: DataState<Section<Album>> = albums,
+    val allEps: DataState<Section<Album>> = eps,
+    val allSingles: DataState<Section<Album>> = singles,
 ) {
     companion object {
         fun loading() =
             ArtistSections(
+                albums = DataState.Loading(),
+                eps = DataState.Loading(),
+                singles = DataState.Loading(),
+                topTracks = DataState.Loading(),
                 library = DataState.Loading(),
                 libraryEps = DataState.Loading(),
                 librarySingles = DataState.Loading(),
                 all = DataState.Loading(),
                 allEps = DataState.Loading(),
                 allSingles = DataState.Loading(),
-                topTracks = DataState.Loading(),
             )
 
         fun error() = ArtistSections(
+            albums = DataState.Error(),
+            eps = DataState.Error(),
+            singles = DataState.Error(),
+            topTracks = DataState.Error(),
             library = DataState.Error(),
             libraryEps = DataState.Error(),
             librarySingles = DataState.Error(),
             all = DataState.Error(),
             allEps = DataState.Error(),
             allSingles = DataState.Error(),
-            topTracks = DataState.Error(),
         )
     }
 }

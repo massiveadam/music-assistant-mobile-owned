@@ -40,7 +40,25 @@ class ItemListViewModel(
             if (itemList is ItemList.ArtistAlbumGroup) {
                 mediaItemRepository.fetchAlbumGroups(itemList.artistId, itemList.providerInstance)
                     .onSuccess { groups ->
-                        val base = if (itemList.owned) groups.owned else groups.all
+                        val base = if (itemList.owned) {
+                            groups.owned.sortedWith(compareByDescending<io.music_assistant.client.data.model.client.items.Album> { it.year ?: 0 }.thenBy { it.displayName })
+                        } else {
+                            val seen = mutableSetOf<String>()
+                            val list = mutableListOf<io.music_assistant.client.data.model.client.items.Album>()
+                            for (item in groups.owned) {
+                                val key = item.name.trim().lowercase() + "|" + (item.year ?: "")
+                                seen.add(key)
+                                list.add(item)
+                            }
+                            for (item in groups.all) {
+                                val key = item.name.trim().lowercase() + "|" + (item.year ?: "")
+                                if (key !in seen) {
+                                    seen.add(key)
+                                    list.add(item)
+                                }
+                            }
+                            list.sortedWith(compareByDescending<io.music_assistant.client.data.model.client.items.Album> { it.year ?: 0 }.thenBy { it.displayName })
+                        }
                         val filtered = when (itemList.groupType) {
                             "album" -> base.filter { it.albumType != io.music_assistant.client.data.model.client.AlbumType.EP && it.albumType != io.music_assistant.client.data.model.client.AlbumType.SINGLE }
                             "ep" -> base.filter { it.albumType == io.music_assistant.client.data.model.client.AlbumType.EP }

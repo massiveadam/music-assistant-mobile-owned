@@ -60,7 +60,7 @@ class MediaItemFactory(
                 uri = uri,
                 images = resolveImageInfo(image, metadata),
                 version = version,
-                year = year,
+                year = year ?: metadata?.releaseDate?.take(4)?.toIntOrNull(),
                 artists = artists?.mapNotNull { create(it) as? Artist } ?: emptyList(),
                 albumType = AlbumType.fromServer(albumType),
             )
