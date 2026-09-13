@@ -205,6 +205,11 @@ private fun ActionButton(
     contentDescription: String? = null,
     onClick: () -> Unit,
 ) {
+    val iconSize = when {
+        size >= 56.dp -> 28.dp
+        size >= 44.dp -> 24.dp
+        else -> 20.dp
+    }
     IconButton(
         modifier = Modifier
             .alphaOn(enabled)
@@ -213,7 +218,7 @@ private fun ActionButton(
         enabled = enabled,
     ) {
         Icon(
-            modifier = Modifier.size(size - 12.dp),
+            modifier = Modifier.size(iconSize),
             imageVector = icon,
             contentDescription = contentDescription,
             tint = tint,

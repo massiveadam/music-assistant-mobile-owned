@@ -132,8 +132,8 @@ fun CompactPlayerItem(
             // Album cover on the far left
             Box(
                 modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(8.dp))
+                    .size(52.dp)
+                    .clip(RoundedCornerShape(10.dp))
                     .background(colors.dominant.alphaOn(currentMedia != null)),
                 contentAlignment = Alignment.Center,
             ) {
@@ -184,8 +184,8 @@ fun CompactPlayerItem(
                         .padding(start = marqueeFade)
                         .alphaOn(poweredOff || currentMedia?.title != null),
                     text = trackName,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Medium,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
