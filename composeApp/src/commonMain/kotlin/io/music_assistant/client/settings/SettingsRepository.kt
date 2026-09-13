@@ -809,7 +809,7 @@ class SettingsRepository(
 
     // GitHub repository for in-app updates (e.g. "username/mobile-app")
     private val _githubRepo = MutableStateFlow(
-        settings.getString("github_repo", "")
+        settings.getString("github_repo", "massiveadam/music-assistant-mobile-owned")
     )
     val githubRepo = _githubRepo.asStateFlow()
 
