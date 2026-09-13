@@ -927,12 +927,13 @@ private fun ArtistContent(
             if (sections.incompleteAlbums) {
                 item { Text("Some sources could not be loaded. Showing albums from the other sources.") }
             }
+            // Owned / Library Sections
             item {
                 SectionRow(
                     artist = artist,
                     sectionData = sections.library,
-                    id = "library",
-                    title = "Owned albums".toDisplayString(),
+                    id = "library_albums",
+                    title = "Owned Albums".toDisplayString(),
                     initiallyExpanded = true,
                     onNavigateClick = onNavigateClick,
                     onNavigateToList = onNavigateToList,
@@ -946,9 +947,74 @@ private fun ArtistContent(
             item {
                 SectionRow(
                     artist = artist,
+                    sectionData = sections.libraryEps,
+                    id = "library_eps",
+                    title = "Owned EPs".toDisplayString(),
+                    initiallyExpanded = true,
+                    onNavigateClick = onNavigateClick,
+                    onNavigateToList = onNavigateToList,
+                    onPlayChildClick = onPlayChildClick,
+                    playlistActions = playlistActions,
+                    libraryActions = libraryActions,
+                    providerIconFetcher = providerIconFetcher,
+                )
+            }
+
+            item {
+                SectionRow(
+                    artist = artist,
+                    sectionData = sections.librarySingles,
+                    id = "library_singles",
+                    title = "Owned Singles".toDisplayString(),
+                    initiallyExpanded = true,
+                    onNavigateClick = onNavigateClick,
+                    onNavigateToList = onNavigateToList,
+                    onPlayChildClick = onPlayChildClick,
+                    playlistActions = playlistActions,
+                    libraryActions = libraryActions,
+                    providerIconFetcher = providerIconFetcher,
+                )
+            }
+
+            // Provider / All Sections
+            item {
+                SectionRow(
+                    artist = artist,
                     sectionData = sections.all,
-                    id = "all",
-                    title = "All albums".toDisplayString(),
+                    id = "all_albums",
+                    title = "All Albums".toDisplayString(),
+                    initiallyExpanded = false,
+                    onNavigateClick = onNavigateClick,
+                    onNavigateToList = onNavigateToList,
+                    onPlayChildClick = onPlayChildClick,
+                    playlistActions = playlistActions,
+                    libraryActions = libraryActions,
+                    providerIconFetcher = providerIconFetcher,
+                )
+            }
+
+            item {
+                SectionRow(
+                    artist = artist,
+                    sectionData = sections.allEps,
+                    id = "all_eps",
+                    title = "All EPs".toDisplayString(),
+                    initiallyExpanded = false,
+                    onNavigateClick = onNavigateClick,
+                    onNavigateToList = onNavigateToList,
+                    onPlayChildClick = onPlayChildClick,
+                    playlistActions = playlistActions,
+                    libraryActions = libraryActions,
+                    providerIconFetcher = providerIconFetcher,
+                )
+            }
+
+            item {
+                SectionRow(
+                    artist = artist,
+                    sectionData = sections.allSingles,
+                    id = "all_singles",
+                    title = "All Singles".toDisplayString(),
                     initiallyExpanded = false,
                     onNavigateClick = onNavigateClick,
                     onNavigateToList = onNavigateToList,
@@ -1008,7 +1074,10 @@ private fun <T : AppMediaItem> SectionRow(
             }
             if (!expanded) return@Column
             if (sectionData is DataState.Data && sectionData.data.items.isEmpty()) {
-                Text(if (id == "library") "No local albums or synced Bandcamp purchases." else "No albums found.")
+                if (id == "library_albums" || id == "library") {
+                    Text("No local albums or synced Bandcamp purchases.")
+                    return@Column
+                }
                 return@Column
             }
             if (sectionData is DataState.Error) {

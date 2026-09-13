@@ -37,7 +37,7 @@ data class ServerMediaItem(
     @SerialName("position") val position: Long? = null,
     @SerialName("year") val year: Int? = null,
     @SerialName("artists") val artists: List<ServerMediaItem>? = null,
-    // @SerialName("album_type") val albumType: AlbumType? = null,
+    @SerialName("album_type") val albumType: String? = null,
     // Playlist only
     // @SerialName("owner") val owner: String? = null,
     @SerialName("is_editable") val isEditable: Boolean? = null,

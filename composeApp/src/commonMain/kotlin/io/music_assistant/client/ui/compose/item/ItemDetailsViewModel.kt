@@ -247,17 +247,59 @@ class ItemDetailsViewModel(
             val result = mediaItemRepository.fetchAlbumGroups(artist.itemId, artist.provider)
             _state.update { state ->
                 val groups = result.getOrNull()
+                val (ownedAlbums, ownedEps, ownedSingles) = if (groups != null) {
+                    val sorted = groups.owned.sortedWith(compareByDescending<Album> { it.year ?: 0 }.thenBy { it.displayName })
+                    Triple(
+                        sorted.filter { it.albumType != io.music_assistant.client.data.model.client.AlbumType.EP && it.albumType != io.music_assistant.client.data.model.client.AlbumType.SINGLE },
+                        sorted.filter { it.albumType == io.music_assistant.client.data.model.client.AlbumType.EP },
+                        sorted.filter { it.albumType == io.music_assistant.client.data.model.client.AlbumType.SINGLE },
+                    )
+                } else Triple(null, null, null)
+
+                val (allAlbums, allEps, allSingles) = if (groups != null) {
+                    val sorted = groups.all.sortedWith(compareByDescending<Album> { it.year ?: 0 }.thenBy { it.displayName })
+                    Triple(
+                        sorted.filter { it.albumType != io.music_assistant.client.data.model.client.AlbumType.EP && it.albumType != io.music_assistant.client.data.model.client.AlbumType.SINGLE },
+                        sorted.filter { it.albumType == io.music_assistant.client.data.model.client.AlbumType.EP },
+                        sorted.filter { it.albumType == io.music_assistant.client.data.model.client.AlbumType.SINGLE },
+                    )
+                } else Triple(null, null, null)
+
                 state.copy(artistSections = state.artistSections.copy(
-                    library = groups?.let {
+                    library = ownedAlbums?.let {
                         DataState.Data(Section(
-                            items = it.owned.take(ARTIST_SECTION_LIMIT),
-                            itemList = ItemList.ArtistAlbumGroup(artist.provider, artist.itemId, owned = true),
+                            items = it.take(ARTIST_SECTION_LIMIT),
+                            itemList = ItemList.ArtistAlbumGroup(artist.provider, artist.itemId, owned = true, groupType = "album"),
                         ))
                     } ?: DataState.Error(),
-                    all = groups?.let {
+                    libraryEps = ownedEps?.let {
                         DataState.Data(Section(
-                            items = it.all.take(ARTIST_SECTION_LIMIT),
-                            itemList = ItemList.ArtistAlbumGroup(artist.provider, artist.itemId, owned = false),
+                            items = it.take(ARTIST_SECTION_LIMIT),
+                            itemList = ItemList.ArtistAlbumGroup(artist.provider, artist.itemId, owned = true, groupType = "ep"),
+                        ))
+                    } ?: DataState.Error(),
+                    librarySingles = ownedSingles?.let {
+                        DataState.Data(Section(
+                            items = it.take(ARTIST_SECTION_LIMIT),
+                            itemList = ItemList.ArtistAlbumGroup(artist.provider, artist.itemId, owned = true, groupType = "single"),
+                        ))
+                    } ?: DataState.Error(),
+                    all = allAlbums?.let {
+                        DataState.Data(Section(
+                            items = it.take(ARTIST_SECTION_LIMIT),
+                            itemList = ItemList.ArtistAlbumGroup(artist.provider, artist.itemId, owned = false, groupType = "album"),
+                        ))
+                    } ?: DataState.Error(),
+                    allEps = allEps?.let {
+                        DataState.Data(Section(
+                            items = it.take(ARTIST_SECTION_LIMIT),
+                            itemList = ItemList.ArtistAlbumGroup(artist.provider, artist.itemId, owned = false, groupType = "ep"),
+                        ))
+                    } ?: DataState.Error(),
+                    allSingles = allSingles?.let {
+                        DataState.Data(Section(
+                            items = it.take(ARTIST_SECTION_LIMIT),
+                            itemList = ItemList.ArtistAlbumGroup(artist.provider, artist.itemId, owned = false, groupType = "single"),
                         ))
                     } ?: DataState.Error(),
                     incompleteAlbums = groups?.unavailableSources?.isNotEmpty() == true,
@@ -650,7 +692,19 @@ class ItemDetailsViewModel(
                                 library = sections.library.map {
                                     it.copy(items = it.items.replacing(changed))
                                 },
+                                libraryEps = sections.libraryEps.map {
+                                    it.copy(items = it.items.replacing(changed))
+                                },
+                                librarySingles = sections.librarySingles.map {
+                                    it.copy(items = it.items.replacing(changed))
+                                },
                                 all = sections.all.map {
+                                    it.copy(items = it.items.replacing(changed))
+                                },
+                                allEps = sections.allEps.map {
+                                    it.copy(items = it.items.replacing(changed))
+                                },
+                                allSingles = sections.allSingles.map {
                                     it.copy(items = it.items.replacing(changed))
                                 },
                             ),
@@ -732,15 +786,35 @@ private fun DataState<out List<*>>.hasItems(): Boolean = when (this) {
 
 data class ArtistSections(
     val library: DataState<Section<Album>> = DataState.Loading(),
+    val libraryEps: DataState<Section<Album>> = DataState.Loading(),
+    val librarySingles: DataState<Section<Album>> = DataState.Loading(),
     val all: DataState<Section<Album>> = DataState.Loading(),
+    val allEps: DataState<Section<Album>> = DataState.Loading(),
+    val allSingles: DataState<Section<Album>> = DataState.Loading(),
     val topTracks: DataState<Section<Track>> = DataState.Loading(),
     val incompleteAlbums: Boolean = false,
 ) {
     companion object {
         fun loading() =
-            ArtistSections(DataState.Loading(), DataState.Loading(), DataState.Loading())
+            ArtistSections(
+                library = DataState.Loading(),
+                libraryEps = DataState.Loading(),
+                librarySingles = DataState.Loading(),
+                all = DataState.Loading(),
+                allEps = DataState.Loading(),
+                allSingles = DataState.Loading(),
+                topTracks = DataState.Loading(),
+            )
 
-        fun error() = ArtistSections(DataState.Error(), DataState.Error(), DataState.Error())
+        fun error() = ArtistSections(
+            library = DataState.Error(),
+            libraryEps = DataState.Error(),
+            librarySingles = DataState.Error(),
+            all = DataState.Error(),
+            allEps = DataState.Error(),
+            allSingles = DataState.Error(),
+            topTracks = DataState.Error(),
+        )
     }
 }
 

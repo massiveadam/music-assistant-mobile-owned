@@ -1,6 +1,7 @@
 package io.music_assistant.client.data.factory
 
 import io.music_assistant.client.api.ServiceClient
+import io.music_assistant.client.data.model.client.AlbumType
 import io.music_assistant.client.data.model.client.Chapter
 import io.music_assistant.client.data.model.client.ImageInfo
 import io.music_assistant.client.data.model.client.ImageType
@@ -61,6 +62,7 @@ class MediaItemFactory(
                 version = version,
                 year = year,
                 artists = artists?.mapNotNull { create(it) as? Artist } ?: emptyList(),
+                albumType = AlbumType.fromServer(albumType),
             )
 
             MediaType.TRACK -> Track(

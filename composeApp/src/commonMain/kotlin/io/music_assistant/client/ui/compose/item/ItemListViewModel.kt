@@ -39,7 +39,16 @@ class ItemListViewModel(
         viewModelScope.launch {
             if (itemList is ItemList.ArtistAlbumGroup) {
                 mediaItemRepository.fetchAlbumGroups(itemList.artistId, itemList.providerInstance)
-                    .onSuccess { items.value = if (itemList.owned) it.owned else it.all }
+                    .onSuccess { groups ->
+                        val base = if (itemList.owned) groups.owned else groups.all
+                        val filtered = when (itemList.groupType) {
+                            "album" -> base.filter { it.albumType != io.music_assistant.client.data.model.client.AlbumType.EP && it.albumType != io.music_assistant.client.data.model.client.AlbumType.SINGLE }
+                            "ep" -> base.filter { it.albumType == io.music_assistant.client.data.model.client.AlbumType.EP }
+                            "single" -> base.filter { it.albumType == io.music_assistant.client.data.model.client.AlbumType.SINGLE }
+                            else -> base
+                        }
+                        items.value = filtered
+                    }
                     .onFailure { loadFailed.value = true }
                 return@launch
             }
@@ -78,7 +87,12 @@ class ItemListViewModel(
 @Serializable
 sealed interface ItemList {
     @Serializable
-    data class ArtistAlbumGroup(val providerInstance: String, val artistId: String, val owned: Boolean) : ItemList {
+    data class ArtistAlbumGroup(
+        val providerInstance: String,
+        val artistId: String,
+        val owned: Boolean,
+        val groupType: String? = null,
+    ) : ItemList {
         override val mediaType: MediaType = MediaType.ALBUM
     }
 
