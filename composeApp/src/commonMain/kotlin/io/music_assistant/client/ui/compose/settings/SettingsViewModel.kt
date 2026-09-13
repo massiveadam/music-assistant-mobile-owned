@@ -15,6 +15,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import io.music_assistant.client.updater.GitHubUpdateChecker
+import io.music_assistant.client.updater.UpdateCheckResult
 
 class SettingsViewModel(
     private val apiClient: ServiceClient,
@@ -157,5 +159,22 @@ class SettingsViewModel(
     fun removeFromHistory(entry: ConnectionHistoryEntry) {
         settings.removeHistoryEntry(entry.historyKey)
         entry.serverId?.let { settings.setTokenForServer(it, null) }
+    }
+
+    // GitHub Updates
+    val githubRepo = settings.githubRepo
+    fun setGithubRepo(repo: String) = settings.setGithubRepo(repo)
+
+    private val _updateCheckResult = MutableStateFlow<UpdateCheckResult>(UpdateCheckResult.Idle)
+    val updateCheckResult: StateFlow<UpdateCheckResult> = _updateCheckResult
+
+    private val updateChecker = GitHubUpdateChecker()
+
+    fun checkForUpdates(repo: String = githubRepo.value) {
+        viewModelScope.launch {
+            _updateCheckResult.value = UpdateCheckResult.Checking
+            val result = updateChecker.checkForUpdates(repo)
+            _updateCheckResult.value = result
+        }
     }
 }

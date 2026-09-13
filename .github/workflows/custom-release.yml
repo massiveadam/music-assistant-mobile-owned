@@ -1,0 +1,49 @@
+name: Build & Release Custom APK
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./gradlew
+
+      - name: Build Android APK
+        run: ./gradlew :androidApp:assembleDebug --console=plain
+
+      - name: Prepare Release Artifacts
+        id: prepare
+        run: |
+          mkdir -p release-assets
+          cp androidApp/build/outputs/apk/debug/androidApp-debug.apk release-assets/Music-Assistant-Owned.apk
+          cd release-assets
+          sha256sum Music-Assistant-Owned.apk > Music-Assistant-Owned.apk.sha256
+          echo "SHA=$(cut -d' ' -f1 < Music-Assistant-Owned.apk.sha256)" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release-assets/Music-Assistant-Owned.apk
+            release-assets/Music-Assistant-Owned.apk.sha256
+          generate_release_notes: true
+          name: ${{ github.ref_name }}

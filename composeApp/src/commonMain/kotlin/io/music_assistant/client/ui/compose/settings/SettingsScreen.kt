@@ -41,6 +41,9 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
+import androidx.compose.material3.OutlinedTextField
+import io.music_assistant.client.updater.GitHubUpdateChecker
+import io.music_assistant.client.updater.UpdateCheckResult
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -279,6 +282,8 @@ fun SettingsScreen(goHome: () -> Unit, exitApp: () -> Unit) {
                 when (sessionState) {
                     is SessionState.Disconnected -> {
                         AboutSection()
+                        Spacer(modifier = Modifier.size(16.dp))
+                        GitHubUpdatesSection(viewModel = viewModel)
                         ConnectionMethodTabs(
                             viewModel = viewModel,
                             ipAddress = ipAddress,
@@ -371,6 +376,9 @@ fun SettingsScreen(goHome: () -> Unit, exitApp: () -> Unit) {
                     onShareCrashLog = { viewModel.shareCrashLog(shareCrashLogsTitle) },
                     onDeleteCrashLog = { viewModel.deleteCrashLog() },
                 )
+
+                Spacer(modifier = Modifier.size(16.dp))
+                GitHubUpdatesSection(viewModel = viewModel)
 
                 Spacer(modifier = Modifier.size(16.dp))
             }
@@ -481,6 +489,126 @@ internal fun SectionTitle(text: String) {
         color = MaterialTheme.colorScheme.onBackground,
         modifier = Modifier.padding(bottom = 12.dp),
     )
+}
+
+@Composable
+private fun GitHubUpdatesSection(viewModel: SettingsViewModel) {
+    val uriHandler = LocalUriHandler.current
+    val savedRepo by viewModel.githubRepo.collectAsStateWithLifecycle()
+    var repoInput by remember(savedRepo) { mutableStateOf(savedRepo) }
+    val updateResult by viewModel.updateCheckResult.collectAsStateWithLifecycle()
+
+    SectionCard {
+        SectionTitle("Updates (GitHub)")
+
+        Text(
+            text = "Current Version: ${GitHubUpdateChecker.CURRENT_APP_VERSION}",
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+
+        Spacer(modifier = Modifier.size(8.dp))
+
+        OutlinedTextField(
+            value = repoInput,
+            onValueChange = {
+                repoInput = it
+                viewModel.setGithubRepo(it)
+            },
+            label = { Text("GitHub Repository (owner/repo)") },
+            placeholder = { Text("e.g. username/mobile-app") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+        )
+
+        Spacer(modifier = Modifier.size(10.dp))
+
+        Button(
+            onClick = { viewModel.checkForUpdates(repoInput) },
+            enabled = repoInput.isNotBlank() && updateResult !is UpdateCheckResult.Checking,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            if (updateResult is UpdateCheckResult.Checking) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.onPrimary,
+                )
+                Spacer(modifier = Modifier.size(8.dp))
+                Text("Checking GitHub...")
+            } else {
+                Text("Check for Updates")
+            }
+        }
+
+        when (val res = updateResult) {
+            is UpdateCheckResult.UpdateAvailable -> {
+                Spacer(modifier = Modifier.size(12.dp))
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(
+                            text = "New Update Available: ${res.newVersion}",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        if (!res.releaseName.isNullOrBlank()) {
+                            Text(
+                                text = res.releaseName,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.padding(top = 2.dp),
+                            )
+                        }
+                        if (!res.changelog.isNullOrBlank()) {
+                            Text(
+                                text = res.changelog.take(300),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
+                            )
+                        }
+                        Button(
+                            onClick = { uriHandler.openUri(res.downloadUrl) },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("Download & Install APK")
+                        }
+                    }
+                }
+            }
+            is UpdateCheckResult.UpToDate -> {
+                Spacer(modifier = Modifier.size(8.dp))
+                Text(
+                    text = "✓ You are running the latest version.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+            is UpdateCheckResult.Error -> {
+                Spacer(modifier = Modifier.size(8.dp))
+                Text(
+                    text = res.message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            else -> Unit
+        }
+
+        Spacer(modifier = Modifier.size(8.dp))
+        Text(
+            text = "Also compatible with Obtainium for automatic background APK updates directly from GitHub.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }
 
 @Composable

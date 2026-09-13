@@ -807,6 +807,17 @@ class SettingsRepository(
         return SortOption(field, desc)
     }
 
+    // GitHub repository for in-app updates (e.g. "username/mobile-app")
+    private val _githubRepo = MutableStateFlow(
+        settings.getString("github_repo", "")
+    )
+    val githubRepo = _githubRepo.asStateFlow()
+
+    fun setGithubRepo(repo: String) {
+        settings.putString("github_repo", repo)
+        _githubRepo.update { repo }
+    }
+
     private companion object {
         const val CAR_DSP_CONNECT_KEY = "car_dsp_action_connect"
         const val CAR_DSP_DISCONNECT_KEY = "car_dsp_action_disconnect"
