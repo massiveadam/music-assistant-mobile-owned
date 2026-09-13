@@ -6,6 +6,8 @@ import io.music_assistant.client.api.ServiceClient
 import io.music_assistant.client.data.factory.MediaItemFactory
 import io.music_assistant.client.data.model.client.items.AppMediaItem
 import io.music_assistant.client.data.model.client.items.RecommendationFolder
+import io.music_assistant.client.data.model.server.ArtistAlbumGroups
+import io.music_assistant.client.data.model.client.items.Album
 import io.music_assistant.client.data.model.server.SearchResult
 import io.music_assistant.client.data.model.server.ServerMediaItem
 import io.music_assistant.client.data.model.server.events.MediaItemAddedEvent
@@ -51,6 +53,22 @@ class MediaItemRepository(
      * Failures (RPC error, decode failure, missing payload) surface as a
      * failed [Result] so callers can still log via `result.exceptionOrNull()`.
      */
+    data class AlbumGroups(
+        val owned: List<Album>,
+        val all: List<Album>,
+        val unavailableSources: List<String>,
+    )
+
+    suspend fun fetchAlbumGroups(itemId: String, provider: String): Result<AlbumGroups> =
+        apiClient.sendRequest(Request.Artist.getAlbumGroups(itemId, provider)).mapCatching { answer ->
+            val groups = answer.resultAs<ArtistAlbumGroups>() ?: error("Missing album groups")
+            AlbumGroups(
+                owned = factory.createList(groups.owned).filterIsInstance<Album>(),
+                all = factory.createList(groups.all).filterIsInstance<Album>(),
+                unavailableSources = groups.unavailableSources,
+            )
+        }
+
     suspend fun fetchMediaItems(request: Request): Result<List<AppMediaItem>> =
         apiClient.sendRequest(request).mapCatching { answer ->
             answer.resultAs<List<ServerMediaItem>>()

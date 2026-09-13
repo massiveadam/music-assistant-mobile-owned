@@ -521,6 +521,9 @@ data class Request @OptIn(ExperimentalUuidApi::class) constructor(
     }
 
     data object Artist {
+        fun getAlbumGroups(itemId: String, providerInstanceIdOrDomain: String) =
+            Library.subItems("music/artists/album_groups", itemId, providerInstanceIdOrDomain)
+
         fun get(
             itemId: String,
             providerInstanceIdOrDomain: String,

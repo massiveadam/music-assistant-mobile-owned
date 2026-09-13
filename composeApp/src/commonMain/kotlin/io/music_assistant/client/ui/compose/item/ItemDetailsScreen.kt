@@ -29,6 +29,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -923,12 +924,16 @@ private fun ArtistContent(
             contentPadding = contentPadding,
         ) {
             item { heroSlot() }
+            if (sections.incompleteAlbums) {
+                item { Text("Some sources could not be loaded. Showing albums from the other sources.") }
+            }
             item {
                 SectionRow(
                     artist = artist,
                     sectionData = sections.library,
                     id = "library",
-                    title = Res.string.artist_section_in_library.toDisplayString(),
+                    title = "Owned albums".toDisplayString(),
+                    initiallyExpanded = true,
                     onNavigateClick = onNavigateClick,
                     onNavigateToList = onNavigateToList,
                     onPlayChildClick = onPlayChildClick,
@@ -943,10 +948,10 @@ private fun ArtistContent(
                     artist = artist,
                     sectionData = sections.all,
                     id = "all",
-                    title = Res.string.artist_section_all.toDisplayString(),
+                    title = "All albums".toDisplayString(),
+                    initiallyExpanded = false,
                     onNavigateClick = onNavigateClick,
                     onNavigateToList = onNavigateToList,
-                    onFilterSelected = onAlbumMappingChanged,
                     onPlayChildClick = onPlayChildClick,
                     playlistActions = playlistActions,
                     libraryActions = libraryActions,
@@ -979,6 +984,7 @@ private fun <T : AppMediaItem> SectionRow(
     sectionData: DataState<Section<T>>,
     id: String,
     title: DisplayString,
+    initiallyExpanded: Boolean? = null,
     onNavigateClick: (AppMediaItem) -> Unit,
     onNavigateToList: (String, ItemList) -> Unit,
     onFilterSelected: (ProviderMapping) -> Unit = {},
@@ -987,35 +993,60 @@ private fun <T : AppMediaItem> SectionRow(
     libraryActions: LibraryActions,
     providerIconFetcher: @Composable ((Modifier, String) -> Unit),
 ) {
-    CategoryRow(
-        data = sectionData,
-        containerItem = artist,
-        itemCategoryProvider = { section ->
-            ItemCategory(
-                id = id,
-                title = title,
-                items = section.items,
-                list = section.itemList,
-                filter = if (section.providerDomain != null && artist.providerMappings != null) {
-                    ItemCategory.Filter(
-                        label = section.providerDomain.toDisplayString(),
-                        options = artist.providerMappings,
-                        labelTransform = { it.providerDomain.toDisplayString() },
-                        contentDescription = Res.string.cd_provider_filter,
-                    )
-                } else {
-                    null
-                },
-            )
-        },
-        onNavigateClick = onNavigateClick,
-        onNavigateToList = onNavigateToList,
-        onOptionSelected = onFilterSelected,
-        onPlayClick = onPlayChildClick,
-        playlistActions = playlistActions,
-        libraryActions = libraryActions,
-        providerIconFetcher = providerIconFetcher,
-    )
+    Column {
+        var expanded by rememberSaveable(artist.uri, id) { mutableStateOf(initiallyExpanded ?: true) }
+        val heading: (@Composable () -> Unit)? = if (initiallyExpanded != null) {
+            {
+                TextButton(onClick = { expanded = !expanded }) {
+                    Text(title.string() + if (expanded) " ▴" else " ▾")
+                }
+            }
+        } else null
+        if (initiallyExpanded != null) {
+            if (!expanded || sectionData !is DataState.Data || sectionData.data.items.isEmpty()) {
+                heading?.invoke()
+            }
+            if (!expanded) return@Column
+            if (sectionData is DataState.Data && sectionData.data.items.isEmpty()) {
+                Text(if (id == "library") "No local albums or synced Bandcamp purchases." else "No albums found.")
+                return@Column
+            }
+            if (sectionData is DataState.Error) {
+                Text("Could not load albums. Check the connection and try opening this artist again.")
+                return@Column
+            }
+        }
+        CategoryRow(
+            data = sectionData,
+            heading = heading,
+            containerItem = artist,
+            itemCategoryProvider = { section ->
+                ItemCategory(
+                    id = id,
+                    title = title,
+                    items = section.items,
+                    list = section.itemList,
+                    filter = if (section.providerDomain != null && artist.providerMappings != null) {
+                        ItemCategory.Filter(
+                            label = section.providerDomain.toDisplayString(),
+                            options = artist.providerMappings,
+                            labelTransform = { it.providerDomain.toDisplayString() },
+                            contentDescription = Res.string.cd_provider_filter,
+                        )
+                    } else {
+                        null
+                    },
+                )
+            },
+            onNavigateClick = onNavigateClick,
+            onNavigateToList = onNavigateToList,
+            onOptionSelected = onFilterSelected,
+            onPlayClick = onPlayChildClick,
+            playlistActions = playlistActions,
+            libraryActions = libraryActions,
+            providerIconFetcher = providerIconFetcher,
+        )
+    }
 }
 
 @Composable

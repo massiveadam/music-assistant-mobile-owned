@@ -1,5 +1,11 @@
 package io.music_assistant.client.ui.compose.item
 
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.view.View
+import androidx.compose.ui.platform.LocalView
+import java.io.File
+import org.robolectric.annotation.GraphicsMode
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
@@ -27,6 +33,7 @@ import io.music_assistant.client.utils.support.MockFunction2
 import musicassistantclient.composeapp.generated.resources.Res
 import musicassistantclient.composeapp.generated.resources.action_go_to_artist
 import musicassistantclient.composeapp.generated.resources.cd_album_item
+import musicassistantclient.composeapp.generated.resources.cd_view_all
 import musicassistantclient.composeapp.generated.resources.cd_more
 import org.junit.Rule
 import org.junit.Test
@@ -94,6 +101,51 @@ class ItemDetailsTest {
                 ),
             ).assertIsDisplayed()
         }
+    }
+
+    @Test
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun `owned albums start open and all albums expand on request`() {
+        val artist = AppMediaItemFixtures.artist()
+        val owned = AppMediaItemFixtures.album(artist = artist).copy(name = "Local purchase")
+        val streaming = AppMediaItemFixtures.album(artist = artist).copy(name = "Streaming exclusive")
+        val allList = ItemList.ArtistAlbumGroup(artist.provider, artist.itemId, owned = false)
+        var navigatedTo: Pair<String, ItemList>? = null
+        lateinit var renderedView: View
+        composeTestRule.setInspectableContent {
+            renderedView = LocalView.current
+            ItemDetails(
+                state = ItemDetailsViewModel.State(
+                    itemState = DataState.Data(artist),
+                    albumsState = DataState.NoData(),
+                    playableItemsState = DataState.NoData(),
+                    artistSections = ArtistSections(
+                        library = DataState.Data(Section(listOf(owned))),
+                        all = DataState.Data(Section(listOf(owned, streaming), itemList = allList)),
+                    ),
+                ),
+                geEditablePlaylists = suspend { emptyList() },
+                fetchColors = NoColors,
+                onNavigateToList = { title, list, _ -> navigatedTo = title to list },
+            )
+        }
+        composeTestRule.inScrollable("LazyVerticalGrid") {
+            onNode(hasContentDescription(Res.string.cd_album_item.get(owned.displayName, owned.provider))).assertIsDisplayed()
+            onNode(hasText("All albums ▾")).performClick()
+            onNode(hasContentDescription(Res.string.cd_album_item.get(streaming.displayName, streaming.provider))).assertIsDisplayed()
+            val screenshot = File("build/outputs/album-groups/expanded.png")
+            screenshot.parentFile?.mkdirs()
+            composeTestRule.runOnIdle {
+                val view = renderedView.rootView
+                val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+                view.draw(Canvas(bitmap))
+                screenshot.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            }
+            onNode(hasContentDescription(Res.string.cd_view_all.get("All albums"))).performClick()
+            assertEquals("All albums" to allList, navigatedTo)
+            onNode(hasText("All albums ▴")).performClick()
+        }
+        composeTestRule.onNodeWithContentDescription(Res.string.cd_album_item.get(streaming.displayName, streaming.provider)).assertDoesNotExist()
     }
 
     @Test

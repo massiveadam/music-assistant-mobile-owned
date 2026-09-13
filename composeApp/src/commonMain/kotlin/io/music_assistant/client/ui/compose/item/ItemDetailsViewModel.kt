@@ -244,74 +244,24 @@ class ItemDetailsViewModel(
 
     private fun loadArtistAlbumSections(artist: Artist) {
         viewModelScope.launch {
-            try {
-                val library = if (artist.isInLibrary) {
-                    fetchArtistItems(Request.Artist.getAlbums(artist.itemId, artist.provider))
-                        .filterIsInstance<Album>()
-                } else {
-                    emptyList()
-                }
-
-                _state.update {
-                    it.copy(
-                        artistSections = it.artistSections.copy(
-                            library = DataState.Data(
-                                Section(
-                                    items = library.take(ARTIST_SECTION_LIMIT),
-                                    itemList = ItemList.ArtistLibrary(artist.itemId),
-                                ),
-                            ),
-                        ),
-                    )
-                }
-            } catch (e: Exception) {
-                Logger.e("Failed to load artist album sections", e)
-                _state.update {
-                    it.copy(
-                        artistSections = it.artistSections.copy(
-                            library = DataState.Error(),
-                        ),
-                    )
-                }
-            }
-        }
-
-        viewModelScope.launch {
-            val list = ItemUseCases.fetchArtistItemsAcrossProviders<Album>(
-                mediaItemRepository,
-                artist,
-            ) { itemId, providerInstance ->
-                Request.Artist.getAlbums(
-                    itemId,
-                    providerInstance,
-                )
-            }
-
-            if (list != null) {
-                _state.update {
-                    it.copy(
-                        artistSections = it.artistSections.copy(
-                            all = DataState.Data(
-                                Section(
-                                    list.items.take(ARTIST_SECTION_LIMIT),
-                                    providerDomain = list.mapping.providerDomain,
-                                    itemList = ItemList.ArtistAlbums(
-                                        list.mapping.providerInstance,
-                                        list.mapping.itemId,
-                                    ),
-                                ),
-                            ),
-                        ),
-                    )
-                }
-            } else {
-                _state.update {
-                    it.copy(
-                        artistSections = it.artistSections.copy(
-                            all = DataState.Error(),
-                        ),
-                    )
-                }
+            val result = mediaItemRepository.fetchAlbumGroups(artist.itemId, artist.provider)
+            _state.update { state ->
+                val groups = result.getOrNull()
+                state.copy(artistSections = state.artistSections.copy(
+                    library = groups?.let {
+                        DataState.Data(Section(
+                            items = it.owned.take(ARTIST_SECTION_LIMIT),
+                            itemList = ItemList.ArtistAlbumGroup(artist.provider, artist.itemId, owned = true),
+                        ))
+                    } ?: DataState.Error(),
+                    all = groups?.let {
+                        DataState.Data(Section(
+                            items = it.all.take(ARTIST_SECTION_LIMIT),
+                            itemList = ItemList.ArtistAlbumGroup(artist.provider, artist.itemId, owned = false),
+                        ))
+                    } ?: DataState.Error(),
+                    incompleteAlbums = groups?.unavailableSources?.isNotEmpty() == true,
+                ))
             }
         }
 
@@ -784,6 +734,7 @@ data class ArtistSections(
     val library: DataState<Section<Album>> = DataState.Loading(),
     val all: DataState<Section<Album>> = DataState.Loading(),
     val topTracks: DataState<Section<Track>> = DataState.Loading(),
+    val incompleteAlbums: Boolean = false,
 ) {
     companion object {
         fun loading() =

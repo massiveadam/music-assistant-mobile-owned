@@ -64,6 +64,7 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 fun <T, U> CategoryRow(
     data: DataState<T>,
+    heading: (@Composable () -> Unit)? = null,
     itemCategoryProvider: (T) -> ItemCategory<U>,
     onNavigateClick: (AppMediaItem) -> Unit,
     containerItem: AppMediaItem? = null,
@@ -78,6 +79,7 @@ fun <T, U> CategoryRow(
     if (data is DataState.Data) {
         CategoryRow(
             itemCategory = itemCategoryProvider(data.data),
+            heading = heading,
             onNavigateClick = onNavigateClick,
             containerItem = containerItem,
             onNavigateToList = onNavigateToList,
@@ -132,6 +134,7 @@ fun <T, U> CategoryRow(
 @Composable
 fun <T> CategoryRow(
     itemCategory: ItemCategory<T>,
+    heading: (@Composable () -> Unit)? = null,
     onNavigateClick: (AppMediaItem) -> Unit,
     containerItem: AppMediaItem? = null,
     onNavigateToList: (String, ItemList) -> Unit = { _, _ -> },
@@ -149,6 +152,7 @@ fun <T> CategoryRow(
     val title = itemCategory.title.string()
     CategoryRow(
         title = title,
+        heading = heading,
         actions = {
             if (itemCategory.filter != null) {
                 FilterSelector(
@@ -184,6 +188,7 @@ fun <T> CategoryRow(
 @Composable
 fun CategoryRow(
     title: String,
+    heading: (@Composable () -> Unit)? = null,
     actions: @Composable () -> Unit = {},
     onNavigateClick: (AppMediaItem) -> Unit,
     containerItem: AppMediaItem? = null,
@@ -208,7 +213,7 @@ fun CategoryRow(
     RowWithTitle(
         modifier = modifier,
         title = {
-            Text(title)
+            if (heading != null) heading() else Text(title)
         },
         actions = actions,
     ) {
