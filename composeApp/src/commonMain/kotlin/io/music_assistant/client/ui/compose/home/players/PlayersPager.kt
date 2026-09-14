@@ -626,6 +626,10 @@ private fun ExpandedPlayerPage(
                             livePositionFlow = livePositionFlow,
                             bufferedAheadSecFlow = bufferedAheadSecFlow,
                             chapterProgressEnabled = chapterProgressEnabled,
+                            navigateToItem = {
+                                navigateToItem(it)
+                                onClose()
+                            },
                         )
                     }
                 }

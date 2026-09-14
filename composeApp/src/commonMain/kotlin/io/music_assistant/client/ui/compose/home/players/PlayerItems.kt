@@ -60,6 +60,9 @@ import io.music_assistant.client.data.model.client.PlayerData
 import io.music_assistant.client.data.model.client.PlayerDataFixtures
 import io.music_assistant.client.data.model.client.ResolvedChapter
 import io.music_assistant.client.data.model.client.items.AppMediaItem
+import io.music_assistant.client.data.model.client.items.Artist
+import io.music_assistant.client.data.model.client.items.Track
+import io.music_assistant.client.ui.compose.common.items.ChooseArtistDialog
 import io.music_assistant.client.data.model.client.items.Audiobook
 import io.music_assistant.client.data.model.client.items.PodcastEpisode
 import io.music_assistant.client.data.model.client.items.QualityTier
@@ -292,6 +295,7 @@ fun FullPlayerItem(
     onPlaybackSpeedClick: () -> Unit = {},
     // Server preference gate for the chapter-relative timeline.
     chapterProgressEnabled: Boolean = true,
+    navigateToItem: ((AppMediaItem) -> Unit)? = null,
 ) {
     val currentMedia = item.player.currentMedia
     val onPrimaryContainer = MaterialTheme.colorScheme.onPrimaryContainer
@@ -404,28 +408,94 @@ fun FullPlayerItem(
                     // marquee on a blank string builds a degenerate layer tree that overflows the
                     // RenderThread's native stack (SIGSEGV in HWUI prepareTree) — no-subtitle radios
                     // hit this. The empty Text still reserves one line; it just doesn't scroll.
-                    // Chapter mode uses the active chapter name as the subtitle.
-                    val subtitle = currentChapter?.displayName ?: currentMedia?.subtitle
-                    Text(
-                        modifier = Modifier.fillMaxWidth()
-                            .then(
-                                if (subtitle.isNullOrBlank()) {
-                                    Modifier
-                                } else {
-                                    Modifier
-                                        .fadingEdges()
-                                        .basicMarquee()
-                                        .padding(horizontal = FULL_PLAYER_HORIZONTAL_PADDING)
+                    val currentTrackItem = item.queueInfo?.currentItem?.track as? Track
+                    val hasClickableLinks = navigateToItem != null && currentChapter == null && currentTrackItem != null && (currentTrackItem.artists.isNotEmpty() || currentTrackItem.album != null)
+
+                    if (hasClickableLinks && currentTrackItem != null && navigateToItem != null) {
+                        var artistChoices by remember { mutableStateOf<List<Artist>?>(null) }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .fadingEdges()
+                                .basicMarquee()
+                                .padding(horizontal = FULL_PLAYER_HORIZONTAL_PADDING)
+                                .alphaOn(currentMedia?.title != null),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            if (currentTrackItem.artists.isNotEmpty()) {
+                                Text(
+                                    modifier = Modifier.clickable {
+                                        if (currentTrackItem.artists.size == 1) {
+                                            navigateToItem(currentTrackItem.artists[0])
+                                        } else {
+                                            artistChoices = currentTrackItem.artists
+                                        }
+                                    },
+                                    text = currentTrackItem.artists.joinToString(", ") { it.displayName },
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = Color(0xFFA1A1AA),
+                                    maxLines = 1,
+                                )
+                            }
+                            if (currentTrackItem.album != null) {
+                                if (currentTrackItem.artists.isNotEmpty()) {
+                                    Text(
+                                        text = " • ",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = Color(0xFFA1A1AA),
+                                    )
+                                }
+                                Text(
+                                    modifier = Modifier.clickable {
+                                        navigateToItem(currentTrackItem.album)
+                                    },
+                                    text = currentTrackItem.album.name,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = Color(0xFFA1A1AA),
+                                    maxLines = 1,
+                                )
+                            }
+                        }
+                        artistChoices?.let { artists ->
+                            ChooseArtistDialog(
+                                artists = artists,
+                                onSelect = {
+                                    artistChoices = null
+                                    navigateToItem(it)
                                 },
+                                onDismiss = { artistChoices = null },
                             )
-                            .alphaOn(currentMedia?.title != null),
-                        text = subtitle.orEmpty(), // TODO take from currentItem?
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = Color(0xFFA1A1AA),
-                        textAlign = TextAlign.Center,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                        }
+                    } else {
+                        // Always render the subtitle line so every player item keeps the same height,
+                        // even when blank. But attach `basicMarquee()` ONLY when there's real text:
+                        // marquee on a blank string builds a degenerate layer tree that overflows the
+                        // RenderThread's native stack (SIGSEGV in HWUI prepareTree) — no-subtitle radios
+                        // hit this. The empty Text still reserves one line; it just doesn't scroll.
+                        // Chapter mode uses the active chapter name as the subtitle.
+                        val subtitle = currentChapter?.displayName ?: currentMedia?.subtitle
+                        Text(
+                            modifier = Modifier.fillMaxWidth()
+                                .then(
+                                    if (subtitle.isNullOrBlank()) {
+                                        Modifier
+                                    } else {
+                                        Modifier
+                                            .fadingEdges()
+                                            .basicMarquee()
+                                            .padding(horizontal = FULL_PLAYER_HORIZONTAL_PADDING)
+                                    },
+                                )
+                                .alphaOn(currentMedia?.title != null),
+                            text = subtitle.orEmpty(), // TODO take from currentItem?
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = Color(0xFFA1A1AA),
+                            textAlign = TextAlign.Center,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
             }
         }

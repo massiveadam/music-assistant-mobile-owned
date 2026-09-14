@@ -338,6 +338,29 @@ private fun ItemText(
                 style = MaterialTheme.typography.titleMedium,
             )
         }
+
+        if (item is Album) {
+            val fullReleaseDate = item.metadata?.releaseDate?.takeIf { it.isNotBlank() }
+            val albumTypeStr = item.albumType?.name?.lowercase()?.replaceFirstChar { it.uppercase() }
+            val extraMeta = listOfNotNull(
+                fullReleaseDate?.takeIf { item.year == null || !it.startsWith(item.year.toString()) }?.let { "Released: $it" },
+                albumTypeStr,
+            ).filter { it.isNotBlank() }
+
+            if (extraMeta.isNotEmpty()) {
+                Text(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fadingEdges()
+                        .basicMarquee()
+                        .padding(horizontal = 16.dp),
+                    text = extraMeta.joinToString(" • "),
+                    textAlign = textAlign,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.inactive(),
+                )
+            }
+        }
     }
 }
 

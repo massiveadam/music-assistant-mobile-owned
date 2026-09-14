@@ -26,5 +26,15 @@ data class Album(
     override val canStartEndlessMix: Boolean = true
     override val displayName =
         "${name}${version?.trim()?.takeIf { it.isNotBlank() }?.let { " ($it)" }.orEmpty()}"
-    override val subtitle = artists.joinToString(separator = ", ") { it.displayName }
+    override val subtitle: String
+        get() {
+            val artistNames = artists.joinToString(separator = ", ") { it.displayName }
+            val releaseYear = year ?: metadata?.releaseDate?.take(4)?.toIntOrNull()
+            return when {
+                artistNames.isNotBlank() && releaseYear != null -> "$artistNames • $releaseYear"
+                artistNames.isNotBlank() -> artistNames
+                releaseYear != null -> releaseYear.toString()
+                else -> ""
+            }
+        }
 }
