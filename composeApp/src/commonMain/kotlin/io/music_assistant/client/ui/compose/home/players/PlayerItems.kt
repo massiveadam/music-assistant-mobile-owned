@@ -186,7 +186,7 @@ fun CompactPlayerItem(
                     text = trackName,
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = Color.White,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -324,7 +324,7 @@ fun FullPlayerItem(
                     fallback = placeholder,
                     model = rememberArtworkRequest(it),
                     contentDescription = currentMedia.title,
-                    contentScale = ContentScale.Crop,
+                    contentScale = ContentScale.Fit,
                     modifier = Modifier.fillMaxSize(),
                 )
             } ?: Icon(
@@ -380,6 +380,7 @@ fun FullPlayerItem(
                 text = trackName,
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
+                color = Color.White,
                 textAlign = TextAlign.Center,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -420,7 +421,7 @@ fun FullPlayerItem(
                             .alphaOn(currentMedia?.title != null),
                         text = subtitle.orEmpty(), // TODO take from currentItem?
                         style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = Color(0xFFA1A1AA),
                         textAlign = TextAlign.Center,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -591,7 +592,7 @@ fun FullPlayerItem(
                             .formatDuration(DurationUnit.SECONDS)
                             .takeIf { timelineDuration != null } ?: "",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = Color(0xFFA1A1AA),
                     )
                 },
                 center = {
@@ -652,7 +653,7 @@ fun FullPlayerItem(
                             ?.let { timelineDuration?.formatDuration(DurationUnit.SECONDS) ?: "\u221E" }
                             ?: "",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = Color(0xFFA1A1AA),
                     )
                 },
             )

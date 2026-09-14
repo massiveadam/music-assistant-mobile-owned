@@ -5,6 +5,7 @@ import io.music_assistant.client.data.model.client.items.AppMediaItem
 import io.music_assistant.client.data.model.client.items.PlayableItem
 import io.music_assistant.client.data.model.client.items.PodcastEpisode
 import io.music_assistant.client.data.model.client.items.Track
+import io.music_assistant.client.data.model.client.items.isOwnedItem
 
 enum class SortField(val serverKey: String, val displayName: String) {
     ORIGINAL("original", "Original"),
@@ -136,5 +137,10 @@ fun <T> List<T>.clientSorted(option: SortOption, context: SubItemContext? = null
             ).orEmpty()
         }
     }
-    return if (option.descending) sortedWith(comparator.reversed()) else sortedWith(comparator)
+    val baseSorted = if (option.descending) sortedWith(comparator.reversed()) else sortedWith(comparator)
+    return if (context == SubItemContext.ALBUM_TRACKS || context == SubItemContext.PLAYLIST_ITEMS) {
+        baseSorted
+    } else {
+        baseSorted.sortedByDescending { (it as? AppMediaItem)?.isOwnedItem == true }
+    }
 }

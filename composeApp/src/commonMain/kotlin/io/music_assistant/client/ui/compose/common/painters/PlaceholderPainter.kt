@@ -15,8 +15,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 
 private class PlaceholderPainter(
-    private val backgroundColor: Color = Color(0xFFE8E8E8),
-    private val iconColor: Color = Color(0xFF9E9E9E),
+    private val backgroundColor: Color = Color(0xFF1E1E22),
+    private val iconColor: Color = Color(0xFF3F3F46),
     private val iconPainter: Painter,
 ) : Painter() {
     override val intrinsicSize: Size = Size.Unspecified
@@ -49,8 +49,8 @@ private class PlaceholderPainter(
 
 @Composable
 fun rememberPlaceholderPainter(
-    backgroundColor: Color = Color(0xFFE8E8E8),
-    iconColor: Color = Color(0xFF9E9E9E),
+    backgroundColor: Color = Color(0xFF1E1E22),
+    iconColor: Color = Color(0xFF3F3F46),
     icon: ImageVector,
 ): Painter {
     val vectorPainter = rememberVectorPainter(icon)

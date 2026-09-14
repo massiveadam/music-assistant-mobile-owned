@@ -61,6 +61,7 @@ import io.music_assistant.client.ui.compose.common.CenteredProgress
 import io.music_assistant.client.ui.compose.common.CenteredText
 import io.music_assistant.client.ui.compose.common.DataState
 import io.music_assistant.client.ui.compose.common.items.CategoryRow
+import io.music_assistant.client.ui.compose.common.items.PlayHandler
 import io.music_assistant.client.ui.compose.common.items.ItemCategory
 import io.music_assistant.client.ui.compose.common.items.ProvideClickActions
 import io.music_assistant.client.ui.compose.common.items.lazyListKey
@@ -110,8 +111,9 @@ fun HomeScreen(
         remember(items) { items.associate { it.first.category.lazyListKey to it.second } }
 
     var editMode by remember { mutableStateOf(false) }
-    val displayedData =
+    val displayedData = remember(editMode, items, working) {
         if (editMode) items.map { it.first } else working.filter { it.second }.map { it.first }
+    }
 
     val reorderableState = rememberReorderableLazyListState(state.lazyListState) { from, to ->
         // Constrain reorder to the contiguous enabled section.
@@ -154,14 +156,17 @@ fun HomeScreen(
                 color = MaterialTheme.colorScheme.error,
             )
         } else {
+            val onPlayClickLambda: PlayHandler<AppMediaItem> = remember(homeScreenViewModel) {
+                { item, option, radio, _ ->
+                    homeScreenViewModel.onPlayClick(item, option, radio)
+                }
+            }
             val rowContent: @Composable (HomeRow) -> Unit = { row ->
                 CategoryRow(
                     data = if (row.loading) DataState.Loading() else DataState.Data(row.category),
                     itemCategoryProvider = { it },
                     onNavigateClick = onNavigateClick,
-                    onPlayClick = { item, option, radio, _ ->
-                        homeScreenViewModel.onPlayClick(item, option, radio)
-                    },
+                    onPlayClick = onPlayClickLambda,
                     playlistActions = actionsViewModel,
                     libraryActions = actionsViewModel,
                     progressActions = actionsViewModel,

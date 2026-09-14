@@ -5,7 +5,9 @@ import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,6 +36,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
@@ -42,6 +46,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import io.music_assistant.client.settings.ViewMode
 import io.music_assistant.client.data.model.client.items.Album
 import io.music_assistant.client.data.model.client.items.AppMediaItem
 import io.music_assistant.client.data.model.client.items.Artist
@@ -92,14 +97,7 @@ fun <T, U> CategoryRow(
         )
     } else if (data is DataState.Loading) {
         val placeholderWidth = 140.dp
-        val placeholderColor by rememberInfiniteTransition().animateColor(
-            initialValue = Color.Gray.copy(alpha = 0.1f),
-            targetValue = Color.Gray.copy(alpha = 0.3f),
-            animationSpec = infiniteRepeatable(
-                animation = tween(2000),
-                repeatMode = RepeatMode.Reverse,
-            ),
-        )
+        val placeholderColor = MaterialTheme.colorScheme.surfaceContainerHigh
 
         RowWithTitle(
             title = {
@@ -273,6 +271,7 @@ fun CategoryRow(
 
                 is Track -> TrackWithMenu(
                     item = item,
+                    viewMode = ViewMode.GRID,
                     navigateToItem = onNavigateClick,
                     containerItem = containerItem,
                     onPlayOption = onPlayClick,
@@ -333,17 +332,22 @@ private fun RowWithTitle(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 16.dp, top = 8.dp, bottom = 8.dp),
+                .padding(start = 16.dp, end = 12.dp, top = 14.dp, bottom = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
             ProvideTextStyle(
-                value = MaterialTheme.typography.titleMedium,
+                value = MaterialTheme.typography.titleMedium.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    letterSpacing = (-0.2).sp,
+                    color = Color.White,
+                ),
             ) {
                 title()
             }
 
-            Row {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 actions()
             }
         }
@@ -352,7 +356,7 @@ private fun RowWithTitle(
         LazyRow(
             state = rowListState,
             contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             row()
         }
@@ -390,8 +394,14 @@ private fun ViewAllButton(
         onClick = {
             onNavigateToList(rowTitle, itemList)
         },
+        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
     ) {
-        Text("View all")
+        Text(
+            text = "View all",
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = Color(0xFF8E8E93),
+        )
     }
 }
 
@@ -426,8 +436,14 @@ private fun <T> FilterSelector(
                 },
             selected = true,
             onClick = { expanded = true },
+            shape = RoundedCornerShape(8.dp),
+            colors = FilterChipDefaults.filterChipColors(
+                selectedContainerColor = Color(0xFF141416),
+                selectedLabelColor = Color.White,
+            ),
+            border = BorderStroke(0.5.dp, Color(0xFF2E2E32)),
             label = {
-                Text(label)
+                Text(label, style = MaterialTheme.typography.labelSmall)
             },
         )
 

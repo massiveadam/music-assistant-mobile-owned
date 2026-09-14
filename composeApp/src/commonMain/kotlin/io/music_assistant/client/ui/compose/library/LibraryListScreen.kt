@@ -245,10 +245,12 @@ private fun LibraryListTopBar(
                     onSortChanged = { onSortChanged(it) },
                 )
 
-                ViewModeToggle(
-                    viewMode = viewMode,
-                    onToggleViewMode = onToggleViewMode,
-                )
+                if (mediaType != MediaType.TRACK) {
+                    ViewModeToggle(
+                        viewMode = viewMode,
+                        onToggleViewMode = onToggleViewMode,
+                    )
+                }
             },
         )
     }

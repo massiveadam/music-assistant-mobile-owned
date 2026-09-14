@@ -199,22 +199,6 @@ private fun <T> PlayableItemWithMenu(
     val clickActionConfig = LocalClickActionConfig.current
     val effectiveDefault = clickActionConfig.effectiveActionFor(item)
 
-    val actions = resolveLongClickActions(
-        item = item,
-        clickContext = clickActionConfig.context,
-        librarySupported = true,
-        canAddToPlaylist = playlistActions != null && item.supportsAddToPlaylist,
-        canRemoveFromPlaylist = onRemoveFromPlaylist != null,
-        progressSupported = progressActions != null && item is PodcastEpisode,
-        defaultAction = effectiveDefault,
-        customizationAllowed = true,
-    )
-
-    // Built outside the DropdownMenu so the multi-artist chooser dialog survives its dismissal.
-    val navOptions = navigateToItem
-        ?.let { item.navigationOptions(it, containerItem) }
-        ?: emptyList()
-
     val runPlayAction: (ItemAction) -> Unit = { action ->
         when (action) {
             is ItemAction.Play -> onPlayOption(item, action.queueOption, false, false)
@@ -234,35 +218,54 @@ private fun <T> PlayableItemWithMenu(
             { effectiveDefault?.let(runPlayAction) ?: run { expandedItemId = item.itemId } },
             { expandedItemId = item.itemId },
         )
-        DropdownMenu(
-            modifier = Modifier.semantics {
-                role = Role.DropdownList
-            },
-            expanded = expandedItemId == item.itemId,
-            onDismissRequest = { expandedItemId = null },
-        ) {
-            ItemActionMenuItems(clickActionConfig.context, actions, defaultAction = effectiveDefault) { action ->
-                expandedItemId = null
-                when (action) {
-                    is ItemAction.Play,
-                    ItemAction.StartEndlessMix,
-                    is ItemAction.PlayFromHere,
-                    -> runPlayAction(action)
-                    ItemAction.AddToLibrary -> libraryActions.onLibraryClick(item)
-                    ItemAction.RemoveFromLibrary -> showRemoveConfirmation = true
 
-                    ItemAction.Favorite,
-                    ItemAction.Unfavorite,
-                        -> libraryActions.onFavoriteClick(item)
+        if (expandedItemId == item.itemId) {
+            val actions = resolveLongClickActions(
+                item = item,
+                clickContext = clickActionConfig.context,
+                librarySupported = true,
+                canAddToPlaylist = playlistActions != null && item.supportsAddToPlaylist,
+                canRemoveFromPlaylist = onRemoveFromPlaylist != null,
+                progressSupported = progressActions != null && item is PodcastEpisode,
+                defaultAction = effectiveDefault,
+                customizationAllowed = true,
+            )
 
-                    ItemAction.AddToPlaylist -> showPlaylistDialog = true
-                    ItemAction.RemoveFromPlaylist -> showRemovePlaylistConfirmation = true
-                    ItemAction.MarkPlayed -> progressActions?.onMarkPlayed(item)
-                    ItemAction.MarkUnplayed -> progressActions?.onMarkUnplayed(item)
-                    ItemAction.Customize -> showCustomizeDialog = true
+            // Built outside the DropdownMenu so the multi-artist chooser dialog survives its dismissal.
+            val navOptions = navigateToItem
+                ?.let { item.navigationOptions(it, containerItem) }
+                ?: emptyList()
+
+            DropdownMenu(
+                modifier = Modifier.semantics {
+                    role = Role.DropdownList
+                },
+                expanded = true,
+                onDismissRequest = { expandedItemId = null },
+            ) {
+                ItemActionMenuItems(clickActionConfig.context, actions, defaultAction = effectiveDefault) { action ->
+                    expandedItemId = null
+                    when (action) {
+                        is ItemAction.Play,
+                        ItemAction.StartEndlessMix,
+                        is ItemAction.PlayFromHere,
+                        -> runPlayAction(action)
+                        ItemAction.AddToLibrary -> libraryActions.onLibraryClick(item)
+                        ItemAction.RemoveFromLibrary -> showRemoveConfirmation = true
+
+                        ItemAction.Favorite,
+                        ItemAction.Unfavorite,
+                            -> libraryActions.onFavoriteClick(item)
+
+                        ItemAction.AddToPlaylist -> showPlaylistDialog = true
+                        ItemAction.RemoveFromPlaylist -> showRemovePlaylistConfirmation = true
+                        ItemAction.MarkPlayed -> progressActions?.onMarkPlayed(item)
+                        ItemAction.MarkUnplayed -> progressActions?.onMarkUnplayed(item)
+                        ItemAction.Customize -> showCustomizeDialog = true
+                    }
                 }
+                navOptions.forEach { it.MenuItem(onClose = { expandedItemId = null }) }
             }
-            navOptions.forEach { it.MenuItem(onClose = { expandedItemId = null }) }
         }
 
         if (showPlaylistDialog && playlistActions != null) {

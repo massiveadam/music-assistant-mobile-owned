@@ -1,6 +1,8 @@
 package io.music_assistant.client.ui.compose.search
 
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -52,8 +54,9 @@ fun SearchInput(
         modifier = modifier
             .fillMaxWidth()
             .height(54.dp)
+            .border(0.5.dp, Color(0xFF2E2E32), RoundedCornerShape(12.dp))
             .focusRequester(focusRequester),
-        shape = SearchBarDefaults.inputFieldShape,
+        shape = RoundedCornerShape(12.dp),
         value = query,
         onValueChange = onQueryChanged,
         placeholder = {
@@ -89,12 +92,16 @@ fun SearchInput(
             null
         },
         colors = TextFieldDefaults.colors(
-            focusedContainerColor = SearchBarDefaults.colors().containerColor,
-            unfocusedContainerColor = SearchBarDefaults.colors().containerColor,
-            disabledContainerColor = SearchBarDefaults.colors().containerColor,
+            focusedContainerColor = Color(0xFF141416),
+            unfocusedContainerColor = Color(0xFF141416),
+            disabledContainerColor = Color(0xFF141416),
             focusedIndicatorColor = Color.Transparent,
             unfocusedIndicatorColor = Color.Transparent,
             disabledIndicatorColor = Color.Transparent,
+            focusedTextColor = Color.White,
+            unfocusedTextColor = Color.White,
+            focusedPlaceholderColor = Color(0xFF8E8E93),
+            unfocusedPlaceholderColor = Color(0xFF8E8E93),
         ),
     )
 }

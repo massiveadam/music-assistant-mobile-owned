@@ -83,11 +83,16 @@ sealed class AppMediaItem {
 
     /**
      * URI suitable for the play_media API.
-     * For genres, always constructs a full URI since the server requires it.
-     * For other types, uses the server-provided [uri].
+     * Always prefer the canonical URI provided by Music Assistant.
+     * If absent, construct a standard Music Assistant URI: provider://media_type/item_id
      */
     open val mediaUri: String?
-        get() = uri
+        get() {
+            if (!uri.isNullOrBlank()) return uri
+            val prov = providerMappings?.firstOrNull() ?: return null
+            val separator = if (prov.itemId.startsWith("/")) "" else "/"
+            return "${prov.providerInstance}://${mediaType.serverValue}$separator${prov.itemId}"
+        }
 
     private val mappingsHashes: Set<Int> by lazy {
         providerMappings?.map { it.toHash().hashCode() }?.toSet() ?: emptySet()
@@ -129,6 +134,19 @@ sealed class AppMediaItem {
 
 /** A quick favorite toggle is possible only when the add path has a [uri] to send. */
 val AppMediaItem.canBeFavorited: Boolean get() = uri != null
+
+val AppMediaItem.isOwnedItem: Boolean
+    get() {
+        val ownedDomains = setOf("filesystem_local", "filesystem_smb", "filesystem_nfs", "bandcamp")
+        if (provider in ownedDomains || provider.startsWith("filesystem")) return true
+        val mappings = providerMappings ?: return false
+        return mappings.any {
+            it.providerDomain in ownedDomains ||
+                it.providerInstance in ownedDomains ||
+                it.providerDomain.startsWith("filesystem") ||
+                it.providerInstance.startsWith("filesystem")
+        }
+    }
 
 fun PlayableItem.image(type: ImageType): ImageInfo? =
     images[type] ?: images[ImageType.MAIN] ?: images.firstNotNullOfOrNull { it.value }

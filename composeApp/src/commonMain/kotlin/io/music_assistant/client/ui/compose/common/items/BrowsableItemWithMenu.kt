@@ -284,21 +284,6 @@ private fun <T : AppMediaItem> BrowsableItemWithMenu(
     var showPlaylistDialog by rememberSaveable { mutableStateOf(false) }
     var showRemoveConfirmation by remember { mutableStateOf(false) }
 
-    val actions = resolveLongClickActions(
-        item = item,
-        clickContext = clickContext,
-        librarySupported = item !is Genre,
-        canAddToPlaylist = playlistActions != null && item.supportsAddToPlaylist,
-        canRemoveFromPlaylist = false,
-        progressSupported = progressActions != null && item is Audiobook,
-        customizationAllowed = false,
-    )
-
-    // Built outside the DropdownMenu so the multi-artist chooser dialog survives its dismissal.
-    val navOptions = navigateToItem
-        ?.let { item.navigationOptions(it, containerItem) }
-        ?: emptyList()
-
     Box(modifier = modifier) {
         // Browsable items stay navigable even when non-playable; dim + drop playback actions.
         val contentModifier = Modifier.align(Alignment.Center)
@@ -308,30 +293,45 @@ private fun <T : AppMediaItem> BrowsableItemWithMenu(
             onNavigateClick,
         ) { expandedItemId = item.itemId }
 
-        DropdownMenu(
-            expanded = expandedItemId == item.itemId,
-            onDismissRequest = { expandedItemId = null },
-        ) {
-            ItemActionMenuItems(clickContext, actions) { action ->
-                expandedItemId = null
-                when (action) {
-                    is ItemAction.Play -> onPlayOption(item, action.queueOption, false, false)
-                    ItemAction.StartEndlessMix -> onPlayOption(item, QueueOption.REPLACE, true, false)
-                    ItemAction.AddToLibrary -> libraryActions.onLibraryClick(item)
-                    ItemAction.RemoveFromLibrary -> showRemoveConfirmation = true
-                    ItemAction.Favorite,
-                    ItemAction.Unfavorite,
-                    -> libraryActions.onFavoriteClick(item)
-                    ItemAction.AddToPlaylist -> showPlaylistDialog = true
-                    ItemAction.MarkPlayed -> progressActions?.onMarkPlayed(item)
-                    ItemAction.MarkUnplayed -> progressActions?.onMarkUnplayed(item)
-                    ItemAction.RemoveFromPlaylist -> Unit
-                    // Browsable items never surface Customize (playable-only menu entry).
-                    ItemAction.Customize -> Unit
-                    else -> Unit
+        if (expandedItemId == item.itemId) {
+            val actions = resolveLongClickActions(
+                item = item,
+                clickContext = clickContext,
+                librarySupported = item !is Genre,
+                canAddToPlaylist = playlistActions != null && item.supportsAddToPlaylist,
+                canRemoveFromPlaylist = false,
+                progressSupported = progressActions != null && item is Audiobook,
+                customizationAllowed = false,
+            )
+            val navOptions = navigateToItem
+                ?.let { item.navigationOptions(it, containerItem) }
+                ?: emptyList()
+
+            DropdownMenu(
+                expanded = true,
+                onDismissRequest = { expandedItemId = null },
+            ) {
+                ItemActionMenuItems(clickContext, actions) { action ->
+                    expandedItemId = null
+                    when (action) {
+                        is ItemAction.Play -> onPlayOption(item, action.queueOption, false, false)
+                        ItemAction.StartEndlessMix -> onPlayOption(item, QueueOption.REPLACE, true, false)
+                        ItemAction.AddToLibrary -> libraryActions.onLibraryClick(item)
+                        ItemAction.RemoveFromLibrary -> showRemoveConfirmation = true
+                        ItemAction.Favorite,
+                        ItemAction.Unfavorite,
+                        -> libraryActions.onFavoriteClick(item)
+                        ItemAction.AddToPlaylist -> showPlaylistDialog = true
+                        ItemAction.MarkPlayed -> progressActions?.onMarkPlayed(item)
+                        ItemAction.MarkUnplayed -> progressActions?.onMarkUnplayed(item)
+                        ItemAction.RemoveFromPlaylist -> Unit
+                        // Browsable items never surface Customize (playable-only menu entry).
+                        ItemAction.Customize -> Unit
+                        else -> Unit
+                    }
                 }
+                navOptions.forEach { it.MenuItem(onClose = { expandedItemId = null }) }
             }
-            navOptions.forEach { it.MenuItem(onClose = { expandedItemId = null }) }
         }
 
         if (showPlaylistDialog && playlistActions != null) {

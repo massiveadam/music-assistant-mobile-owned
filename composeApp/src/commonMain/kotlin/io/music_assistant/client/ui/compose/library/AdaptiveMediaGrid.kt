@@ -99,10 +99,12 @@ fun AdaptiveMediaGrid(
         itemsIndexed(
             items = items,
             key = { index, _ -> itemKeys[index] },
-            span = if (isRow) {
-                { _, _ -> GridItemSpan(maxLineSpan) }
-            } else {
-                null
+            span = { _, item ->
+                if (isRow || item is Track || item is PodcastEpisode) {
+                    GridItemSpan(maxLineSpan)
+                } else {
+                    GridItemSpan(1)
+                }
             },
         ) { _, item ->
             when (item) {
@@ -146,7 +148,7 @@ fun AdaptiveMediaGrid(
 
                 is Track -> TrackWithMenu(
                     item = item,
-                    viewMode = viewMode,
+                    viewMode = ViewMode.LIST,
                     navigateToItem = onNavigateClick,
                     onPlayOption = onPlayClick,
                     playlistActions = playlistActions,

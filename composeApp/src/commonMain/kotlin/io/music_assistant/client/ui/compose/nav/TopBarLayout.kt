@@ -1,5 +1,7 @@
 package io.music_assistant.client.ui.compose.nav
 
+import androidx.compose.foundation.background
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -38,7 +40,11 @@ fun TopBarLayout(
         Column(
             modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         ) {
-            Box(modifier = Modifier.collapsingTopBar(scrollBehavior)) {
+            Box(
+                modifier = Modifier
+                    .background(MaterialTheme.colorScheme.surface)
+                    .collapsingTopBar(scrollBehavior),
+            ) {
                 topBar()
             }
             content()
@@ -53,12 +59,15 @@ fun TopBarLayout(
  */
 @OptIn(ExperimentalMaterial3Api::class)
 private fun Modifier.collapsingTopBar(scrollBehavior: TopAppBarScrollBehavior): Modifier =
-    clipToBounds().layout { measurable, constraints ->
+    this.layout { measurable, constraints ->
         val placeable = measurable.measure(constraints)
-        scrollBehavior.state.heightOffsetLimit = -placeable.height.toFloat()
+        val limit = -placeable.height.toFloat()
+        if (scrollBehavior.state.heightOffsetLimit != limit) {
+            scrollBehavior.state.heightOffsetLimit = limit
+        }
         val offset = scrollBehavior.state.heightOffset
         val height = (placeable.height + offset).coerceAtLeast(0f).roundToInt()
         layout(placeable.width, height) {
             placeable.place(0, offset.roundToInt())
         }
-    }
+    }.clipToBounds()

@@ -133,7 +133,8 @@ fun ItemDetailsScreen(
         state = state,
         onBack = onBack,
         viewModeProvider = { type ->
-            viewModeViewModel.viewModeFor(type).collectAsStateWithLifecycle().value
+            if (type == MediaType.TRACK) ViewMode.LIST
+            else viewModeViewModel.viewModeFor(type).collectAsStateWithLifecycle().value
         },
         onToggleViewMode = viewModeViewModel::toggleFor,
         onNavigateToItem = onNavigateToItem,
@@ -825,13 +826,13 @@ private fun PlayablesTabContent(
     tabsSlot: @Composable () -> Unit,
     gridState: LazyGridState,
 ) {
-    val viewMode = viewModeProvider(MediaType.TRACK)
+    val viewMode = ViewMode.LIST
     // Shared row body for both the flat and the disc-sectioned layouts.
     val trackItem: @Composable (index: Int, track: PlayableItem) -> Unit = { index, track ->
         when (track) {
             is Track -> TrackWithMenu(
                 item = track,
-                viewMode = viewMode,
+                viewMode = ViewMode.LIST,
                 showTrackNumber = parentItem is Album,
                 navigateToItem = onNavigateClick,
                 containerItem = parentItem,
@@ -848,7 +849,7 @@ private fun PlayablesTabContent(
 
             is PodcastEpisode -> PodcastEpisodeWithMenu(
                 item = track,
-                viewMode = viewMode,
+                viewMode = ViewMode.LIST,
                 onPlayOption = onPlayChildClick,
                 playlistActions = null,
                 libraryActions = libraryActions,
@@ -857,8 +858,7 @@ private fun PlayablesTabContent(
             )
         }
     }
-    val listSpan: (LazyGridItemSpanScope.() -> GridItemSpan)? =
-        if (viewMode == ViewMode.LIST) ({ GridItemSpan(maxLineSpan) }) else null
+    val listSpan: (LazyGridItemSpanScope.() -> GridItemSpan) = { GridItemSpan(maxLineSpan) }
     DetailGrid(contentPadding, heroSlot, tabsSlot, gridState) {
         tabListBody(playableItemsState) { tracks ->
             val trackKeys = tracks.playableLazyListOccurrenceKeys()
@@ -883,10 +883,7 @@ private fun PlayablesTabContent(
                 itemsIndexed(
                     items = tracks,
                     key = { index, _ -> trackKeys[index] },
-                    span = when (viewMode) {
-                        ViewMode.LIST -> { _, _ -> GridItemSpan(maxLineSpan) }
-                        ViewMode.GRID -> null
-                    },
+                    span = { _, _ -> GridItemSpan(maxLineSpan) },
                 ) { index, track -> trackItem(index, track) }
             }
         }
@@ -928,21 +925,56 @@ private fun ArtistContent(
                 item { Text("Some sources could not be loaded. Showing albums from the other sources.") }
             }
 
-            // Top Tracks
-            item {
-                SectionRow(
-                    artist = artist,
-                    sectionData = sections.topTracks,
-                    id = "topTracks",
-                    title = stringResource(Res.string.artist_section_top).toDisplayString(),
-                    onNavigateClick = onNavigateClick,
-                    onNavigateToList = onNavigateToList,
-                    onFilterSelected = onTrackMappingChanged,
-                    onPlayChildClick = onPlayChildClick,
-                    playlistActions = playlistActions,
-                    libraryActions = libraryActions,
-                    providerIconFetcher = providerIconFetcher,
-                )
+            // Top Tracks (Vertical list like Tidal)
+            val topTracksState = sections.topTracks
+            if (topTracksState is DataState.Data && topTracksState.data.items.isNotEmpty()) {
+                val topTracksSection = topTracksState.data
+                item {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = stringResource(Res.string.artist_section_top),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        if (topTracksSection.itemList != null) {
+                            TextButton(
+                                onClick = {
+                                    onNavigateToList(
+                                        "Top tracks",
+                                        topTracksSection.itemList,
+                                    )
+                                },
+                            ) {
+                                Text(
+                                    text = "See all",
+                                    style = MaterialTheme.typography.labelMedium,
+                                )
+                            }
+                        }
+                    }
+                }
+                val tracksToShow = topTracksSection.items.take(5)
+                tracksToShow.forEachIndexed { index, track ->
+                    item(key = "artist_top_track_${track.itemId}_$index") {
+                        TrackWithMenu(
+                            item = track,
+                            viewMode = ViewMode.LIST,
+                            showTrackNumber = true,
+                            navigateToItem = onNavigateClick,
+                            containerItem = artist,
+                            onPlayOption = onPlayChildClick,
+                            playlistActions = playlistActions,
+                            libraryActions = libraryActions,
+                            providerIconFetcher = providerIconFetcher,
+                        )
+                    }
+                }
             }
 
             // Albums (Unified owned + streaming, chronologically sorted newest first)

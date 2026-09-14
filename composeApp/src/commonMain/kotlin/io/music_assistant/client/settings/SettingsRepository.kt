@@ -712,14 +712,21 @@ class SettingsRepository(
     private fun viewModeKey(mediaType: MediaType) = "view_mode_${mediaType.name}"
 
     private fun viewModeFlow(mediaType: MediaType) = viewModeFlows.getOrPut(mediaType) {
-        val stored = settings.getStringOrNull(viewModeKey(mediaType))
-        val initial = stored?.let { runCatching { ViewMode.valueOf(it) }.getOrNull() } ?: ViewMode.GRID
-        MutableStateFlow(initial)
+        if (mediaType == MediaType.TRACK) {
+            MutableStateFlow(ViewMode.LIST)
+        } else {
+            val stored = settings.getStringOrNull(viewModeKey(mediaType))
+            val initial = stored?.let { runCatching { ViewMode.valueOf(it) }.getOrNull() } ?: ViewMode.GRID
+            MutableStateFlow(initial)
+        }
     }
 
-    fun viewMode(mediaType: MediaType) = viewModeFlow(mediaType).asStateFlow()
+    fun viewMode(mediaType: MediaType) =
+        if (mediaType == MediaType.TRACK) MutableStateFlow(ViewMode.LIST).asStateFlow()
+        else viewModeFlow(mediaType).asStateFlow()
 
     fun setViewMode(mediaType: MediaType, mode: ViewMode) {
+        if (mediaType == MediaType.TRACK) return
         settings.putString(viewModeKey(mediaType), mode.name)
         viewModeFlow(mediaType).update { mode }
     }

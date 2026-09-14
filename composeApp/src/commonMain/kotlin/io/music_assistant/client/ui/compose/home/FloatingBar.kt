@@ -1,6 +1,7 @@
 package io.music_assistant.client.ui.compose.home
 
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -56,8 +57,10 @@ fun FloatingBar(
                     it.wrapContentHeight().clickable { onExpand(true) }
                 }
             },
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        color = Color(0xFF121215),
+        contentColor = Color.White,
         shape = RoundedCornerShape(clip),
+        border = if (!expanded) BorderStroke(0.5.dp, Color(0xFF27272A)) else null,
     ) {
         Column {
             val contentPadding = if (expanded) {

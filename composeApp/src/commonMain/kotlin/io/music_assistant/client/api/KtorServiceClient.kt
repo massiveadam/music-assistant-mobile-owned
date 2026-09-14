@@ -242,6 +242,7 @@ class KtorServiceClient(
             parameters.apply {
                 append("path", path.encodeURLQueryComponent())
                 append("provider", provider)
+                append("size", IMAGEPROXY_SIZE.toString())
                 append("checksum", "")
             }
         }.buildString()

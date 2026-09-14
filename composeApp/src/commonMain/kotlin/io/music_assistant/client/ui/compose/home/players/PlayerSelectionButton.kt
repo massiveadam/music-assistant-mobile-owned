@@ -3,7 +3,12 @@
 
 package io.music_assistant.client.ui.compose.home.players
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -120,6 +125,13 @@ fun PlayerSelectionButton(
         OutlinedButton(
             modifier = modifier,
             onClick = onSelectPlayer,
+            shape = RoundedCornerShape(20.dp),
+            colors = ButtonDefaults.outlinedButtonColors(
+                containerColor = Color(0xFF141416),
+                contentColor = Color.White,
+            ),
+            border = BorderStroke(0.75.dp, Color(0xFF2E2E32)),
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
         ) {
             PlayerButtonContent(
                 isLocalPlayer = isLocalPlayer,
@@ -165,6 +177,10 @@ private fun PlayerButtonContent(
 
         Text(
             text = playerLabel,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Medium,
+            letterSpacing = 0.2.sp,
+            color = Color.White,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )

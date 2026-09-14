@@ -8,6 +8,7 @@ import io.music_assistant.client.data.model.client.SortConfig
 import io.music_assistant.client.data.model.client.SortOption
 import io.music_assistant.client.data.model.client.clientSorted
 import io.music_assistant.client.data.model.client.items.AppMediaItem
+import io.music_assistant.client.data.model.client.items.isOwnedItem
 import io.music_assistant.client.data.model.server.ServerMediaItem
 import io.music_assistant.client.data.repository.MediaItemRepository
 import io.music_assistant.client.ui.compose.common.DataState
@@ -57,7 +58,7 @@ class ItemListViewModel(
                                     list.add(item)
                                 }
                             }
-                            list.sortedWith(compareByDescending<io.music_assistant.client.data.model.client.items.Album> { it.year ?: 0 }.thenBy { it.displayName })
+                            list.sortedWith(compareByDescending<io.music_assistant.client.data.model.client.items.Album> { it.isOwnedItem }.thenByDescending { it.year ?: 0 }.thenBy { it.displayName })
                         }
                         val filtered = when (itemList.groupType) {
                             "album" -> base.filter { it.albumType != io.music_assistant.client.data.model.client.AlbumType.EP && it.albumType != io.music_assistant.client.data.model.client.AlbumType.SINGLE }

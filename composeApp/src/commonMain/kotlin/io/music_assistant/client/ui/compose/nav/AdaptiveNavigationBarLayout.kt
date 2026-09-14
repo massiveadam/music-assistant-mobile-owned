@@ -21,8 +21,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
+import androidx.compose.material3.NavigationRailItemDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -74,7 +76,7 @@ fun AdaptiveNavigationBarLayout(
         if (showRail) {
             NavigationRail(
                 modifier = Modifier.width(navigationRailWidth),
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                containerColor = Color.Black,
             ) {
                 navigationItems.forEach {
                     NavigationRailItem(
@@ -83,6 +85,11 @@ fun AdaptiveNavigationBarLayout(
                         icon = {
                             Icon(it.icon, contentDescription = it.label)
                         },
+                        colors = NavigationRailItemDefaults.colors(
+                            selectedIconColor = Color.White,
+                            unselectedIconColor = Color(0xFF71717A),
+                            indicatorColor = Color.Transparent,
+                        ),
                     )
                 }
             }
@@ -98,8 +105,15 @@ fun AdaptiveNavigationBarLayout(
                 modifier = Modifier.align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .height(navigationBarHeight + bottomInset)
-                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                    .background(Color.Black),
             ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(0.5.dp)
+                        .background(Color(0xFF1E1E22))
+                        .align(Alignment.TopCenter),
+                )
                 NavigationBar(
                     modifier = Modifier.align(Alignment.TopCenter).height(navigationBarHeight),
                     containerColor = Color.Transparent,
@@ -112,6 +126,11 @@ fun AdaptiveNavigationBarLayout(
                             icon = {
                                 Icon(it.icon, contentDescription = it.label)
                             },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = Color.White,
+                                unselectedIconColor = Color(0xFF71717A),
+                                indicatorColor = Color.Transparent,
+                            ),
                         )
                     }
                 }

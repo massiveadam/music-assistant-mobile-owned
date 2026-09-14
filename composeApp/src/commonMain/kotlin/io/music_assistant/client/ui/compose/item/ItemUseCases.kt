@@ -16,7 +16,15 @@ object ItemUseCases {
             return null
         }
 
-        for (mapping in artist.providerMappings) {
+        val ownedDomains = setOf("filesystem_local", "filesystem_smb", "filesystem_nfs", "bandcamp")
+        val sortedMappings = artist.providerMappings.sortedByDescending {
+            it.providerDomain in ownedDomains ||
+                it.providerInstance in ownedDomains ||
+                it.providerDomain.startsWith("filesystem") ||
+                it.providerInstance.startsWith("filesystem")
+        }
+
+        for (mapping in sortedMappings) {
             val itemId = mapping.itemId
             val providerInstance = mapping.providerInstance
             val result = mediaItemRepository.fetchMediaItems(request(itemId, providerInstance))

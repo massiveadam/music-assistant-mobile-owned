@@ -1,6 +1,10 @@
 package io.music_assistant.client.ui.compose.common
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDownward
@@ -35,6 +39,13 @@ fun SortChip(
         FilterChip(
             selected = true,
             onClick = { expanded = true },
+            shape = RoundedCornerShape(8.dp),
+            colors = FilterChipDefaults.filterChipColors(
+                selectedContainerColor = Color(0xFF141416),
+                selectedLabelColor = Color.White,
+                selectedTrailingIconColor = Color(0xFF8E8E93),
+            ),
+            border = BorderStroke(0.5.dp, Color(0xFF2E2E32)),
             label = { Text(currentSort.field.localizedName()) },
             trailingIcon = {
                 Icon(

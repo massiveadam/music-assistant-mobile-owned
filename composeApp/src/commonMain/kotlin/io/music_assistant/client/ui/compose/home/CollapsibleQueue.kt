@@ -16,6 +16,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -63,6 +66,8 @@ import io.music_assistant.client.data.model.client.ImageType
 import io.music_assistant.client.data.model.client.Queue
 import io.music_assistant.client.data.model.client.items.AppMediaItem
 import io.music_assistant.client.data.model.client.items.Track
+import io.music_assistant.client.data.model.client.items.isOwnedItem
+import io.music_assistant.client.ui.compose.common.items.OwnedPill
 import io.music_assistant.client.data.model.client.items.image
 import io.music_assistant.client.imageloader.rememberArtworkRequest
 import io.music_assistant.client.ui.compose.common.DataState
@@ -131,8 +136,7 @@ fun CollapsibleQueue(
             currentPos?.let { stringResource(Res.string.queue_label_with_position, it, list.size) }
         } ?: defaultLabel
 
-        val queueButtonContentColor = tint.contentColorByLuminance()
-        Button(
+        OutlinedButton(
             modifier = Modifier
                 .let {
                     if (!isQueueExpanded) {
@@ -142,22 +146,26 @@ fun CollapsibleQueue(
                     }
                 }
                 .fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = tint,
-                contentColor = queueButtonContentColor,
+            shape = RoundedCornerShape(20.dp),
+            colors = ButtonDefaults.outlinedButtonColors(
+                containerColor = Color(0xFF141416),
+                contentColor = Color.White,
             ),
+            border = BorderStroke(0.75.dp, Color(0xFF2E2E32)),
             onClick = { onQueueExpandedSwitch() },
         ) {
             Text(
                 text = queueLabel,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
+                color = Color.White,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Icon(
                 imageVector = if (isQueueExpanded) Icons.Default.ExpandMore else Icons.Default.ExpandLess,
                 contentDescription = stringResource(Res.string.cd_toggle_queue),
+                tint = Color.White,
             )
         }
 
@@ -472,26 +480,35 @@ fun Queue(
                                                 text = item.track.displayName,
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis,
-                                                color = MaterialTheme.colorScheme.secondary,
+                                                color = if (isCurrent) Color.White else Color(0xFFF4F4F5),
                                                 style = MaterialTheme.typography.bodyMedium,
                                                 fontWeight = when {
                                                     isCurrent -> FontWeight.Bold
                                                     else -> FontWeight.Normal
                                                 },
                                             )
-                                            Text(
-                                                modifier = Modifier.fillMaxWidth().alpha(0.7f),
-                                                text = if (isPlayable) {
-                                                    (item.track as? AppMediaItem)?.localizedSubtitle()
-                                                        ?: stringResource(Res.string.item_subtitle_unknown)
-                                                } else {
-                                                    stringResource(Res.string.queue_cannot_play)
-                                                },
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
-                                                color = MaterialTheme.colorScheme.secondary,
-                                                style = MaterialTheme.typography.bodySmall,
-                                            )
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                            ) {
+                                                if ((item.track as? AppMediaItem)?.isOwnedItem == true) {
+                                                    OwnedPill()
+                                                    Spacer(Modifier.width(6.dp))
+                                                }
+                                                Text(
+                                                    modifier = Modifier.weight(1f, fill = false),
+                                                    text = if (isPlayable) {
+                                                        (item.track as? AppMediaItem)?.localizedSubtitle()
+                                                            ?: stringResource(Res.string.item_subtitle_unknown)
+                                                    } else {
+                                                        stringResource(Res.string.queue_cannot_play)
+                                                    },
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    color = Color(0xFF8E8E93),
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                )
+                                            }
                                         }
                                         if (!isCurrent && !isPlayed && isPlayable) {
                                             Icon(

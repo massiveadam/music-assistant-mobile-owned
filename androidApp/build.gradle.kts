@@ -14,8 +14,8 @@ android {
         applicationId = "io.music_assistant.client"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
-        versionCode = 16
-        versionName = "0.14.3-owned"
+        versionCode = 20
+        versionName = "0.14.6-owned"
     }
     packaging {
         resources {
@@ -61,6 +61,7 @@ android {
         }
 
         create("selfSignedRelease") {
+            applicationIdSuffix = ".owned"
             isDebuggable = false
             isMinifyEnabled = true
             isShrinkResources = true
@@ -82,7 +83,8 @@ android {
                     it.contains("SelfSignedRelease", ignoreCase = true)
             }
             reset()
-            include("arm64-v8a")
+            include("arm64-v8a", "x86_64")
+            isUniversalApk = true
         }
     }
 

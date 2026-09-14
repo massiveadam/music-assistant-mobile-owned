@@ -6,6 +6,9 @@ package io.music_assistant.client.ui.compose.common.items
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.ui.unit.sp
+import io.music_assistant.client.data.model.client.items.isOwnedItem
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -45,6 +48,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
@@ -76,7 +80,8 @@ import io.music_assistant.client.ui.compose.common.icons.RadioIcon
 import io.music_assistant.client.ui.compose.common.icons.TrackIcon
 import io.music_assistant.client.ui.compose.common.painters.rememberPlaceholderPainter
 import io.music_assistant.client.ui.compose.common.painters.rememberVinylRecordPainter
-import io.music_assistant.client.ui.compose.common.painters.rememberWaveformPainter
+import io.music_assistant.client.data.model.client.AlbumType
+import io.music_assistant.client.ui.compose.common.icons.AlbumIcon
 import io.music_assistant.client.ui.theme.favoriteTint
 import io.music_assistant.client.utils.gridItemMinSize
 import io.music_assistant.client.utils.rowImageSize
@@ -183,11 +188,12 @@ fun AlbumGridItem(
                 providerIconFetcher = providerIconFetcher,
             )
         }
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(6.dp))
         MediaItemLabels(
             title = item.displayName,
             subtitle = item.localizedSubtitle().orEmpty(),
-            textAlign = TextAlign.Center,
+            isOwned = false,
+            textAlign = TextAlign.Start,
         )
     }
 }
@@ -196,36 +202,29 @@ fun AlbumGridItem(
 private fun AlbumImage(
     item: Album,
 ) {
-    val primaryContainer = MaterialTheme.colorScheme.primary
-    val background = MaterialTheme.colorScheme.background
+    val primaryContainer = MaterialTheme.colorScheme.primaryContainer
+    val onPrimaryContainer = MaterialTheme.colorScheme.onPrimaryContainer
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(1f)
-            .clip(RoundedCornerShape(8.dp)),
+            .clip(RoundedCornerShape(6.dp))
+            .background(primaryContainer),
     ) {
-        val vinylRecord = rememberVinylRecordPainter(
-            backgroundColor = background,
-            labelColor = primaryContainer,
-        )
-
-        val cutStripShape = remember { CutStripShape() }
-
-        Image(
-            painter = vinylRecord,
-            contentDescription = stringResource(Res.string.cd_vinyl_record),
-            modifier = Modifier.fillMaxSize().clip(CircleShape),
+        val placeholder = rememberPlaceholderPainter(
+            backgroundColor = primaryContainer,
+            iconColor = onPrimaryContainer,
+            icon = AlbumIcon,
         )
 
         AsyncImage(
-            placeholder = vinylRecord,
-            fallback = vinylRecord,
+            placeholder = placeholder,
+            fallback = placeholder,
             model = item.image(ImageType.THUMB)?.url,
             contentDescription = item.displayName,
             contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .fillMaxSize()
-                .clip(cutStripShape),
+            modifier = Modifier.fillMaxSize(),
         )
     }
 }
@@ -271,51 +270,15 @@ fun PlaylistGridItem(
 private fun PlaylistImage(
     item: Playlist,
 ) {
-    val primary = MaterialTheme.colorScheme.primary
     val primaryContainer = MaterialTheme.colorScheme.primaryContainer
     val onPrimaryContainer = MaterialTheme.colorScheme.onPrimaryContainer
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(1f)
-            .clip(RoundedCornerShape(8.dp)),
+            .clip(RoundedCornerShape(6.dp))
+            .background(primaryContainer),
     ) {
-        val notebookCutShape = remember { NotebookCutShape() }
-
-        // Draw notebook cover background (clipped)
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .clip(notebookCutShape)
-                .background(primaryContainer),
-        )
-
-        // Draw binding dots, sized and positioned relative to the cut strip
-        val ellipseCount = 7
-        Canvas(
-            modifier = Modifier.fillMaxSize(),
-        ) {
-            val bindingWidth = size.width * NotebookCutShape.STRIP_FRACTION
-            val dotRadius = bindingWidth * 0.4f
-            val centerX = bindingWidth / 2f
-            val padding = dotRadius * 2
-            val availableHeight = size.height - padding * 2
-            val spacing = if (ellipseCount > 1) {
-                availableHeight / (ellipseCount - 1)
-            } else {
-                0f
-            }
-
-            for (i in 0 until ellipseCount) {
-                drawCircle(
-                    color = primary,
-                    radius = dotRadius,
-                    center = Offset(x = centerX, y = padding + i * spacing),
-                )
-            }
-        }
-
-        // Draw artwork (clipped)
         val placeholder = rememberPlaceholderPainter(
             backgroundColor = primaryContainer,
             iconColor = onPrimaryContainer,
@@ -327,9 +290,7 @@ private fun PlaylistImage(
             model = item.image(ImageType.THUMB)?.url,
             contentDescription = item.displayName,
             contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .fillMaxSize()
-                .clip(notebookCutShape),
+            modifier = Modifier.fillMaxSize(),
         )
     }
 }
@@ -368,44 +329,15 @@ fun PodcastGridItem(
 private fun PodcastImage(
     item: Podcast,
 ) {
-    val primary = MaterialTheme.colorScheme.primary
     val primaryContainer = MaterialTheme.colorScheme.primaryContainer
     val onPrimaryContainer = MaterialTheme.colorScheme.onPrimaryContainer
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(1f)
-            .clip(RoundedCornerShape(8.dp)),
+            .clip(RoundedCornerShape(6.dp))
+            .background(primaryContainer),
     ) {
-        val cornerCutShape = remember { CornerCutShape() }
-
-        // Draw background (clipped)
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .clip(cornerCutShape)
-                .background(primaryContainer),
-        )
-
-        // Draw concentric circles in the cut corner area (centered on cut edge, rippling outward)
-        val circleCount = 10
-        Canvas(
-            modifier = Modifier.fillMaxSize(),
-        ) {
-            val center = (size.width / 3f) * 0.7f
-            val spacing = center / circleCount
-
-            for (i in 1 until circleCount) {
-                drawCircle(
-                    color = primary,
-                    radius = i * spacing,
-                    center = Offset(center, center),
-                    style = Stroke(width = 2f),
-                )
-            }
-        }
-
-        // Draw artwork (clipped)
         val placeholder = rememberPlaceholderPainter(
             backgroundColor = primaryContainer,
             iconColor = onPrimaryContainer,
@@ -417,9 +349,7 @@ private fun PodcastImage(
             model = item.image(ImageType.THUMB)?.url,
             contentDescription = item.displayName,
             contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .fillMaxSize()
-                .clip(cornerCutShape),
+            modifier = Modifier.fillMaxSize(),
         )
     }
 }
@@ -484,18 +414,7 @@ private fun TrackImage(
             modifier = Modifier.fillMaxSize(),
         )
 
-        // Draw waveform overlay at the bottom
-        val waveformPainter = rememberWaveformPainter(primary)
-        Canvas(
-            modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(1f / 3f)
-                .align(Alignment.BottomCenter),
-        ) {
-            with(waveformPainter) {
-                draw(size)
-            }
-        }
+
     }
 }
 
@@ -622,7 +541,7 @@ private fun RadioImage(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(1f)
-            .clip(WavyHexagonShape())
+            .clip(RoundedCornerShape(6.dp))
             .background(primaryContainer),
     ) {
         val placeholder = rememberPlaceholderPainter(
@@ -686,35 +605,15 @@ internal fun AudiobookGridItem(
 private fun AudiobookImage(
     item: Audiobook,
 ) {
-    val primary = MaterialTheme.colorScheme.primary
     val primaryContainer = MaterialTheme.colorScheme.primaryContainer
     val onPrimaryContainer = MaterialTheme.colorScheme.onPrimaryContainer
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(1f)
-            .clip(RoundedCornerShape(8.dp)),
+            .clip(RoundedCornerShape(6.dp))
+            .background(primaryContainer),
     ) {
-        val spineWidth = 8.dp
-        val bookSpineShape = remember(spineWidth) { BookSpineShape(spineWidth) }
-
-        // Draw book cover background (clipped)
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .clip(bookSpineShape)
-                .background(primaryContainer),
-        )
-
-        // Draw spine strip on the left
-        Box(
-            modifier = Modifier
-                .width(spineWidth)
-                .fillMaxHeight()
-                .background(primary),
-        )
-
-        // Draw artwork (clipped to exclude spine)
         val placeholder = rememberPlaceholderPainter(
             backgroundColor = primaryContainer,
             iconColor = onPrimaryContainer,
@@ -726,9 +625,7 @@ private fun AudiobookImage(
             model = item.image(ImageType.THUMB)?.url,
             contentDescription = item.displayName,
             contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .fillMaxSize()
-                .clip(bookSpineShape),
+            modifier = Modifier.fillMaxSize(),
         )
     }
 }
@@ -747,6 +644,23 @@ private fun GridPlayableItemLabels(item: PlayableItem) {
     )
 }
 
+@Composable
+private fun Modifier.gridCellWidth(): Modifier {
+    val minSize = gridItemMinSize()
+    return this.layout { measurable, constraints ->
+        val targetConstraints = if (constraints.hasBoundedWidth) {
+            constraints
+        } else {
+            val width = minSize.roundToPx()
+            constraints.copy(minWidth = width, maxWidth = width)
+        }
+        val placeable = measurable.measure(targetConstraints)
+        layout(placeable.width, placeable.height) {
+            placeable.place(0, 0)
+        }
+    }
+}
+
 /**
  * Common wrapper for media items with click handling.
  */
@@ -758,26 +672,18 @@ private fun GridItem(
     onLongClick: () -> Unit,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    BoxWithConstraints(
-        modifier = Modifier.clearAndSetSemantics {
-        contentDescription = description
-    },
+    Column(
+        modifier = modifier
+            .gridCellWidth()
+            .clearAndSetSemantics {
+                contentDescription = description
+            }
+            .clip(RoundedCornerShape(6.dp))
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .padding(4.dp),
+        horizontalAlignment = Alignment.Start,
     ) {
-        val cellWidthModifier = if (constraints.hasBoundedWidth) {
-            Modifier.fillMaxWidth()
-        } else {
-            Modifier.width(gridItemMinSize())
-        }
-        Column(
-            modifier = cellWidthModifier
-                .then(modifier)
-                .clip(RoundedCornerShape(8.dp))
-                .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-                .padding(4.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            content()
-        }
+        content()
     }
 }
 
@@ -787,6 +693,7 @@ fun BoxScope.Badges(
     providerIconFetcher: (@Composable (Modifier, String) -> Unit)?,
     badgeSize: Dp = 16.dp,
     badgePadding: Dp = 0.dp,
+    showOwned: Boolean = true,
 ) {
     val modifier = Modifier.padding(badgePadding).size(badgeSize)
     val bottomEnd = modifier.align(Alignment.BottomEnd)
@@ -808,9 +715,37 @@ fun BoxScope.Badges(
             modifier = modifier.align(Alignment.TopEnd)
                 .background(Color.White, RoundedCornerShape(2.dp)),
             imageVector = Icons.Filled.Explicit,
-            contentDescription = stringResource(Res.string.cd_favorite),
+            contentDescription = "Explicit",
             tint = Color.Black,
         )
+    }
+    if (showOwned && item.isOwnedItem) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(4.dp)
+                .background(
+                    color = Color.Black.copy(alpha = 0.8f),
+                    shape = RoundedCornerShape(3.dp),
+                )
+                .border(
+                    width = 0.5.dp,
+                    color = Color.White.copy(alpha = 0.4f),
+                    shape = RoundedCornerShape(3.dp),
+                )
+                .padding(horizontal = 4.dp, vertical = 2.dp),
+        ) {
+            Text(
+                text = "OWNED",
+                color = Color.White,
+                fontSize = 8.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.5.sp,
+                lineHeight = 9.sp,
+                maxLines = 1,
+                softWrap = false,
+            )
+        }
     }
 }
 
@@ -875,6 +810,7 @@ internal fun TrackRowItem(
         name = item.displayName,
         subtitle = item.localizedSubtitle(),
         description = contentDescription(item),
+        isOwned = item.isOwnedItem,
         prefixContent = if (showTrackNumber) {
             item.trackNumber?.toString()?.let { trackNumber ->
                 {
@@ -892,6 +828,7 @@ internal fun TrackRowItem(
                 Badges(
                     item = item,
                     providerIconFetcher = providerIconFetcher,
+                    showOwned = false,
                 )
             }
         },
@@ -913,11 +850,13 @@ internal fun AlbumRowItem(
         name = item.displayName,
         subtitle = item.localizedSubtitle(),
         description = contentDescription(item),
+        isOwned = item.isOwnedItem,
         prefixContent = {
             AlbumImage(item)
             Badges(
                 item = item,
                 providerIconFetcher = providerIconFetcher,
+                showOwned = false,
             )
         },
         onClick = { onClick(item) },
@@ -938,11 +877,13 @@ internal fun ArtistRowItem(
         name = item.displayName,
         subtitle = item.localizedSubtitle(),
         description = contentDescription(item),
+        isOwned = item.isOwnedItem,
         prefixContent = {
             ArtistImage(item)
             Badges(
                 item = item,
                 providerIconFetcher = providerIconFetcher,
+                showOwned = false,
             )
         },
         onClick = { onClick(item) },
@@ -963,11 +904,13 @@ internal fun PlaylistRowItem(
         name = item.displayName,
         subtitle = item.localizedSubtitle(),
         description = contentDescription(item),
+        isOwned = item.isOwnedItem,
         prefixContent = {
             PlaylistImage(item)
             Badges(
                 item = item,
                 providerIconFetcher = providerIconFetcher,
+                showOwned = false,
             )
         },
         onClick = { onClick(item) },
@@ -1241,9 +1184,38 @@ private const val SUBTITLE_ALPHA = 0.6f
  * distinct color, keeping the hierarchy sleek and consistent app-wide.
  */
 @Composable
+internal fun OwnedPill(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .background(
+                color = Color.Black.copy(alpha = 0.8f),
+                shape = RoundedCornerShape(3.dp),
+            )
+            .border(
+                width = 0.5.dp,
+                color = Color.White.copy(alpha = 0.45f),
+                shape = RoundedCornerShape(3.dp),
+            )
+            .padding(horizontal = 4.dp, vertical = 1.dp),
+    ) {
+        Text(
+            text = "OWNED",
+            color = Color.White,
+            fontSize = 8.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.5.sp,
+            lineHeight = 10.sp,
+            maxLines = 1,
+            softWrap = false,
+        )
+    }
+}
+
+@Composable
 internal fun MediaItemLabels(
     title: String,
     subtitle: String?,
+    isOwned: Boolean = false,
     textAlign: TextAlign? = null,
     titleMaxLines: Int = 1,
 ) {
@@ -1256,17 +1228,27 @@ internal fun MediaItemLabels(
         maxLines = titleMaxLines,
         overflow = TextOverflow.Ellipsis,
     )
-    if (!subtitle.isNullOrBlank()) {
-        Text(
-            modifier = Modifier.fillMaxWidth(),
-            text = subtitle,
-            style = MaterialTheme.typography.bodySmall,
-            fontWeight = MEDIA_TITLE_WEIGHT,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = SUBTITLE_ALPHA),
-            textAlign = textAlign,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = if (textAlign == TextAlign.Center) Arrangement.Center else Arrangement.Start,
+    ) {
+        if (isOwned) {
+            OwnedPill()
+            Spacer(Modifier.width(6.dp))
+        }
+        if (!subtitle.isNullOrBlank()) {
+            Text(
+                modifier = Modifier.weight(1f, fill = false),
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = MEDIA_TITLE_WEIGHT,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = SUBTITLE_ALPHA),
+                textAlign = textAlign,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
@@ -1287,6 +1269,7 @@ internal fun RowItem(
     name: String,
     subtitle: String?,
     description: String,
+    isOwned: Boolean = false,
     prefixContent: @Composable (BoxScope.() -> Unit)?,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
@@ -1321,6 +1304,7 @@ internal fun RowItem(
             MediaItemLabels(
                 title = name,
                 subtitle = subtitle,
+                isOwned = isOwned,
                 titleMaxLines = 2,
             )
         }

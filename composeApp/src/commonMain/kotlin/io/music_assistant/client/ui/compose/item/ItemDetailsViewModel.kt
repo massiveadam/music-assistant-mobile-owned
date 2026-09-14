@@ -14,6 +14,7 @@ import io.music_assistant.client.data.model.client.SubItemContext
 import io.music_assistant.client.data.model.client.clientSorted
 import io.music_assistant.client.data.model.client.items.Album
 import io.music_assistant.client.data.model.client.items.AppMediaItem
+import io.music_assistant.client.data.model.client.items.isOwnedItem
 import io.music_assistant.client.data.model.client.items.Artist
 import io.music_assistant.client.data.model.client.items.Audiobook
 import io.music_assistant.client.data.model.client.items.Genre
@@ -265,7 +266,7 @@ class ItemDetailsViewModel(
                         }
                     }
                     // 3. Sort chronologically descending: newest release first!
-                    val sorted = list.sortedWith(compareByDescending<Album> { it.year ?: 0 }.thenBy { it.displayName })
+                    val sorted = list.sortedWith(compareByDescending<Album> { it.isOwnedItem }.thenByDescending { it.year ?: 0 }.thenBy { it.displayName })
                     Triple(
                         sorted.filter { it.albumType != io.music_assistant.client.data.model.client.AlbumType.EP && it.albumType != io.music_assistant.client.data.model.client.AlbumType.SINGLE },
                         sorted.filter { it.albumType == io.music_assistant.client.data.model.client.AlbumType.EP },

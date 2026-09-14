@@ -17,6 +17,7 @@ import io.music_assistant.client.data.model.client.items.Playlist
 import io.music_assistant.client.data.model.client.items.Podcast
 import io.music_assistant.client.data.model.client.items.RadioStation
 import io.music_assistant.client.data.model.client.items.Track
+import io.music_assistant.client.data.model.client.items.isOwnedItem
 import io.music_assistant.client.data.repository.MediaItemRepository
 import io.music_assistant.client.ui.Timings
 import io.music_assistant.client.ui.compose.common.DataState
@@ -200,13 +201,13 @@ class SearchViewModel(
                 if (isActive) {
                     result.getOrNull()?.let { data ->
                         val results = SearchResults(
-                            artists = data.artists,
-                            albums = data.albums,
-                            tracks = data.tracks,
-                            playlists = data.playlists,
-                            audiobooks = data.audiobooks,
-                            podcasts = data.podcasts,
-                            radios = data.radios,
+                            artists = data.artists.sortedByDescending { it.isOwnedItem },
+                            albums = data.albums.sortedByDescending { it.isOwnedItem },
+                            tracks = data.tracks.sortedByDescending { it.isOwnedItem },
+                            playlists = data.playlists.sortedByDescending { it.isOwnedItem },
+                            audiobooks = data.audiobooks.sortedByDescending { it.isOwnedItem },
+                            podcasts = data.podcasts.sortedByDescending { it.isOwnedItem },
+                            radios = data.radios.sortedByDescending { it.isOwnedItem },
                             genres = data.genres,
                         )
                         if (isActive) {
