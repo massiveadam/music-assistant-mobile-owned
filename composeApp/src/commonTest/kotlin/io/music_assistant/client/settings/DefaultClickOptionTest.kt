@@ -123,4 +123,32 @@ class DefaultClickOptionTest {
         )
         assertEquals(playNow, DefaultClickOption.START_ENDLESS_MIX.effectiveFor(testPodcastEpisode()))
     }
+
+    @Test
+    fun `defaultFor returns PLAY_FROM_HERE for track in album or playlist`() {
+        assertEquals(
+            DefaultClickOption.PLAY_FROM_HERE,
+            DefaultClickOption.defaultFor(ItemKind.TRACK, ClickContext.ALBUM),
+        )
+        assertEquals(
+            DefaultClickOption.PLAY_FROM_HERE,
+            DefaultClickOption.defaultFor(ItemKind.TRACK, ClickContext.PLAYLIST),
+        )
+    }
+
+    @Test
+    fun `defaultFor returns PLAY_NOW for other combinations`() {
+        assertEquals(
+            DefaultClickOption.PLAY_NOW,
+            DefaultClickOption.defaultFor(ItemKind.TRACK, ClickContext.LIBRARY),
+        )
+        assertEquals(
+            DefaultClickOption.PLAY_NOW,
+            DefaultClickOption.defaultFor(ItemKind.ALBUM, ClickContext.LIBRARY),
+        )
+        assertEquals(
+            DefaultClickOption.PLAY_NOW,
+            DefaultClickOption.defaultFor(ItemKind.TRACK, null),
+        )
+    }
 }

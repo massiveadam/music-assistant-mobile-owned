@@ -22,6 +22,20 @@ class ClickActionConfigTest {
     }
 
     @Test
+    fun `unconfigured track in album resolves to play from here`() {
+        val config = ClickActionConfig(context = ClickContext.ALBUM, prefs = emptyMap())
+        assertEquals(DefaultClickOption.PLAY_FROM_HERE, config.actionFor(testTrack()))
+        assertEquals(ItemAction.PlayFromHere, config.effectiveActionFor(testTrack()))
+    }
+
+    @Test
+    fun `unconfigured track in playlist resolves to play from here`() {
+        val config = ClickActionConfig(context = ClickContext.PLAYLIST, prefs = emptyMap())
+        assertEquals(DefaultClickOption.PLAY_FROM_HERE, config.actionFor(testTrack()))
+        assertEquals(ItemAction.PlayFromHere, config.effectiveActionFor(testTrack()))
+    }
+
+    @Test
     fun `unknown kind or context resolves to play now`() {
         val config = ClickActionConfig(context = ClickContext.LIBRARY, prefs = trackSearchAddToQueue)
         // TRACK has a SEARCH entry but no LIBRARY entry.

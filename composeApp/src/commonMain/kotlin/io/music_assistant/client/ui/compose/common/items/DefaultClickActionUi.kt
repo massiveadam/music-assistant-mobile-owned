@@ -27,7 +27,7 @@ data class ClickActionConfig(
     fun actionFor(item: AppMediaItem): DefaultClickOption {
         val ctx = context ?: return DefaultClickOption.PLAY_NOW
         val kind = item.itemKind() ?: return DefaultClickOption.PLAY_NOW
-        return prefs[kind]?.get(ctx) ?: DefaultClickOption.PLAY_NOW
+        return prefs[kind]?.get(ctx) ?: DefaultClickOption.defaultFor(kind, ctx)
     }
 
     /** The concrete action a tap performs for [item], or null when it isn't playable. */

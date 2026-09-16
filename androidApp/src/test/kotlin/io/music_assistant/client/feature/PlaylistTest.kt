@@ -35,7 +35,7 @@ class PlaylistTest {
     private val serviceClient: FakeServiceClient by inject(ServiceClient::class.java)
 
     @Test
-    fun `clicking on a track plays just that track`() {
+    fun `clicking on a track plays the rest of the playlist`() {
         val playlist = ServerMediaItemFixtures.playlist()
         val track1 = ServerMediaItemFixtures.track()
         val track2 = ServerMediaItemFixtures.track()
@@ -53,7 +53,7 @@ class PlaylistTest {
             .clickOnMedia(playlist)
             .playMedia(track2)
 
-        assertThat(serviceClient.getQueueForPlayer(player), equalTo(listOf(track2)))
+        assertThat(serviceClient.getQueueForPlayer(player), equalTo(listOf(track2, track3)))
     }
 
     @Test

@@ -43,4 +43,12 @@ enum class DefaultClickOption {
             else -> appliesTo(kind)
         }
     }
+
+    companion object {
+        fun defaultFor(kind: ItemKind, context: ClickContext?): DefaultClickOption = when {
+            kind == ItemKind.TRACK && (context == ClickContext.ALBUM || context == ClickContext.PLAYLIST) ->
+                PLAY_FROM_HERE
+            else -> PLAY_NOW
+        }
+    }
 }

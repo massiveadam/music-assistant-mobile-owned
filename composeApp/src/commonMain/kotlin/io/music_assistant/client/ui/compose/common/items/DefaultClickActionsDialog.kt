@@ -64,11 +64,11 @@ fun DefaultClickActionsDialog(itemKind: ItemKind, onDismiss: () -> Unit) {
 
     val contexts = remember(itemKind) { ClickContext.entries.filter { itemKind.appearsIn(it) } }
 
-    // Local working copy; missing keys default to PLAY_NOW (the historic behavior).
+    // Local working copy; missing keys default to defaultFor(itemKind, it).
     val selection = remember(itemKind) {
         mutableStateMapOf<ClickContext, DefaultClickOption>().apply {
             val saved = stored[itemKind].orEmpty()
-            contexts.forEach { put(it, saved[it] ?: DefaultClickOption.PLAY_NOW) }
+            contexts.forEach { put(it, saved[it] ?: DefaultClickOption.defaultFor(itemKind, it)) }
         }
     }
 
@@ -99,7 +99,7 @@ fun DefaultClickActionsDialog(itemKind: ItemKind, onDismiss: () -> Unit) {
                         ActionDropdown(
                             context = ctx,
                             options = options,
-                            selected = selection[ctx] ?: DefaultClickOption.PLAY_NOW,
+                            selected = selection[ctx] ?: DefaultClickOption.defaultFor(itemKind, ctx),
                             onSelect = { selection[ctx] = it },
                             modifier = Modifier.weight(1f),
                         )
