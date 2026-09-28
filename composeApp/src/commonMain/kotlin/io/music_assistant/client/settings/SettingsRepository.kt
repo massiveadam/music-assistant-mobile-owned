@@ -722,8 +722,11 @@ class SettingsRepository(
     }
 
     fun viewMode(mediaType: MediaType) =
-        if (mediaType == MediaType.TRACK) MutableStateFlow(ViewMode.LIST).asStateFlow()
-        else viewModeFlow(mediaType).asStateFlow()
+        if (mediaType == MediaType.TRACK) {
+            MutableStateFlow(ViewMode.LIST).asStateFlow()
+        } else {
+            viewModeFlow(mediaType).asStateFlow()
+        }
 
     fun setViewMode(mediaType: MediaType, mode: ViewMode) {
         if (mediaType == MediaType.TRACK) return
@@ -816,7 +819,7 @@ class SettingsRepository(
 
     // GitHub repository for in-app updates (e.g. "username/mobile-app")
     private val _githubRepo = MutableStateFlow(
-        settings.getString("github_repo", "massiveadam/music-assistant-mobile-owned")
+        settings.getString("github_repo", "massiveadam/music-assistant-mobile-owned"),
     )
     val githubRepo = _githubRepo.asStateFlow()
 

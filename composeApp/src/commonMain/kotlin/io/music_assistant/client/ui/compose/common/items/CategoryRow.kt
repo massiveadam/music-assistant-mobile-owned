@@ -1,13 +1,7 @@
 package io.music_assistant.client.ui.compose.common.items
 
-import androidx.compose.animation.animateColor
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ProvideTextStyle
@@ -36,17 +31,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import io.music_assistant.client.settings.ViewMode
+import androidx.compose.ui.unit.sp
 import io.music_assistant.client.data.model.client.items.Album
 import io.music_assistant.client.data.model.client.items.AppMediaItem
 import io.music_assistant.client.data.model.client.items.Artist
@@ -57,10 +51,14 @@ import io.music_assistant.client.data.model.client.items.Podcast
 import io.music_assistant.client.data.model.client.items.PodcastEpisode
 import io.music_assistant.client.data.model.client.items.RadioStation
 import io.music_assistant.client.data.model.client.items.Track
+import io.music_assistant.client.settings.ViewMode
 import io.music_assistant.client.ui.compose.common.DataState
 import io.music_assistant.client.ui.compose.common.DisplayString
 import io.music_assistant.client.ui.compose.common.toDisplayString
 import io.music_assistant.client.ui.compose.item.ItemList
+import io.music_assistant.client.ui.theme.hairlineBorder
+import io.music_assistant.client.ui.theme.placeholderText
+import io.music_assistant.client.ui.theme.surfaceSelected
 import musicassistantclient.composeapp.generated.resources.Res
 import musicassistantclient.composeapp.generated.resources.cd_view_all
 import org.jetbrains.compose.resources.StringResource
@@ -400,7 +398,7 @@ private fun ViewAllButton(
             text = "View all",
             style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.SemiBold,
-            color = Color(0xFF8E8E93),
+            color = placeholderText,
         )
     }
 }
@@ -438,10 +436,10 @@ private fun <T> FilterSelector(
             onClick = { expanded = true },
             shape = RoundedCornerShape(8.dp),
             colors = FilterChipDefaults.filterChipColors(
-                selectedContainerColor = Color(0xFF141416),
+                selectedContainerColor = surfaceSelected,
                 selectedLabelColor = Color.White,
             ),
-            border = BorderStroke(0.5.dp, Color(0xFF2E2E32)),
+            border = BorderStroke(0.5.dp, hairlineBorder),
             label = {
                 Text(label, style = MaterialTheme.typography.labelSmall)
             },

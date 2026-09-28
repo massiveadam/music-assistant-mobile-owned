@@ -10,13 +10,13 @@ import io.music_assistant.client.player.sendspin.audio.Codec
 import io.music_assistant.client.settings.ConnectionHistoryEntry
 import io.music_assistant.client.settings.ConnectionType
 import io.music_assistant.client.settings.SettingsRepository
+import io.music_assistant.client.updater.GitHubUpdateChecker
+import io.music_assistant.client.updater.UpdateCheckResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import io.music_assistant.client.updater.GitHubUpdateChecker
-import io.music_assistant.client.updater.UpdateCheckResult
 
 class SettingsViewModel(
     private val apiClient: ServiceClient,

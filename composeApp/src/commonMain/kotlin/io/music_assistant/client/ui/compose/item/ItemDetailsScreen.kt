@@ -103,8 +103,6 @@ import io.music_assistant.client.ui.theme.AppTheme
 import io.music_assistant.client.utils.gridItemMinSize
 import musicassistantclient.composeapp.generated.resources.Res
 import musicassistantclient.composeapp.generated.resources.album_disc_header
-import musicassistantclient.composeapp.generated.resources.artist_section_all
-import musicassistantclient.composeapp.generated.resources.artist_section_in_library
 import musicassistantclient.composeapp.generated.resources.artist_section_top
 import musicassistantclient.composeapp.generated.resources.cd_provider_filter
 import musicassistantclient.composeapp.generated.resources.item_error
@@ -133,8 +131,11 @@ fun ItemDetailsScreen(
         state = state,
         onBack = onBack,
         viewModeProvider = { type ->
-            if (type == MediaType.TRACK) ViewMode.LIST
-            else viewModeViewModel.viewModeFor(type).collectAsStateWithLifecycle().value
+            if (type == MediaType.TRACK) {
+                ViewMode.LIST
+            } else {
+                viewModeViewModel.viewModeFor(type).collectAsStateWithLifecycle().value
+            }
         },
         onToggleViewMode = viewModeViewModel::toggleFor,
         onNavigateToItem = onNavigateToItem,
@@ -160,7 +161,6 @@ fun ItemDetailsScreen(
         onTabSelected = itemDetailsViewModel::onTabSelected,
         onLoadSimilarArtists = itemDetailsViewModel::loadSimilarArtists,
         onAlbumMappingChanged = itemDetailsViewModel::loadAlbumsForProvider,
-        onTrackMappingChanged = itemDetailsViewModel::loadTopTracksForProvider,
         onRefreshPlaylist = itemDetailsViewModel::refreshPlaylistTracks,
     )
 }
@@ -191,7 +191,6 @@ fun ItemDetails(
     onTabSelected: (ItemDetailsTab) -> Unit = {},
     onLoadSimilarArtists: () -> Unit = {},
     onAlbumMappingChanged: (ProviderMapping) -> Unit = { },
-    onTrackMappingChanged: (ProviderMapping) -> Unit = { },
     onRefreshPlaylist: () -> Unit = {},
 ) {
     val playlistActions = object : PlaylistActions {
@@ -282,7 +281,6 @@ fun ItemDetails(
                     onTabSelected = onTabSelected,
                     onLoadSimilarArtists = onLoadSimilarArtists,
                     onAlbumMappingChanged = onAlbumMappingChanged,
-                    onTrackMappingChanged = onTrackMappingChanged,
                     onRefreshPlaylist = onRefreshPlaylist,
                 )
             }
@@ -322,7 +320,6 @@ private fun ItemContent(
     onTabSelected: (ItemDetailsTab) -> Unit,
     onLoadSimilarArtists: () -> Unit,
     onAlbumMappingChanged: (ProviderMapping) -> Unit,
-    onTrackMappingChanged: (ProviderMapping) -> Unit,
     onRefreshPlaylist: () -> Unit,
 ) {
     // Tabs, the loading gate, and the selected tab are all derived in ItemDetailsViewModel.State.
@@ -405,7 +402,6 @@ private fun ItemContent(
                         contentPadding = contentPadding,
                         heroSlot = heroSlot,
                         onAlbumMappingChanged = onAlbumMappingChanged,
-                        onTrackMappingChanged = onTrackMappingChanged,
                     )
                 }
             } else if (tabs.isEmpty()) {
@@ -601,7 +597,6 @@ private fun TabContent(
             playableItemsState = state.playableItemsState,
             parentItem = item,
             playableItemsSortOption = state.playableItemsSortOption,
-            viewModeProvider = viewModeProvider,
             onNavigateClick = onNavigateClick,
             onPlayChildClick = onPlayChildClick,
             playlistActions = playlistActions,
@@ -813,7 +808,6 @@ private fun PlayablesTabContent(
     playableItemsState: DataState<List<PlayableItem>>,
     parentItem: AppMediaItem,
     playableItemsSortOption: SortOption?,
-    viewModeProvider: @Composable (MediaType) -> ViewMode,
     onNavigateClick: (AppMediaItem) -> Unit,
     onPlayChildClick: PlayHandler<AppMediaItem>,
     playlistActions: PlaylistActions,
@@ -913,7 +907,6 @@ private fun ArtistContent(
     contentPadding: PaddingValues,
     heroSlot: @Composable () -> Unit,
     onAlbumMappingChanged: (ProviderMapping) -> Unit,
-    onTrackMappingChanged: (ProviderMapping) -> Unit,
 ) {
     NoOverscroll {
         LazyColumn(

@@ -11,6 +11,11 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+    env:
+      # Skip cleanly when the repo has no Lokalise secrets configured, instead of
+      # failing the scheduled run. Add LOKALISE_API_TOKEN and LOKALISE_PROJECT_ID
+      # under Settings -> Secrets and variables -> Actions to enable the sync.
+      HAS_LOKALISE: ${{ secrets.LOKALISE_PROJECT_ID != '' && secrets.LOKALISE_API_TOKEN != '' }}
 
     steps:
       - name: Checkout Repo
@@ -19,6 +24,7 @@ jobs:
           fetch-depth: 0
 
       - name: Pull from Lokalise
+        if: env.HAS_LOKALISE == 'true'
         uses: lokalise/lokalise-pull-action@v5.2.0
         with:
           api_token: ${{ secrets.LOKALISE_API_TOKEN }}

@@ -3,19 +3,21 @@ package io.music_assistant.client.ui.compose.item
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.music_assistant.client.api.Request
+import io.music_assistant.client.data.model.client.AlbumType
 import io.music_assistant.client.data.model.client.MediaType
 import io.music_assistant.client.data.model.client.SortConfig
 import io.music_assistant.client.data.model.client.SortOption
 import io.music_assistant.client.data.model.client.clientSorted
+import io.music_assistant.client.data.model.client.items.Album
 import io.music_assistant.client.data.model.client.items.AppMediaItem
 import io.music_assistant.client.data.model.client.items.isOwnedItem
 import io.music_assistant.client.data.model.server.ServerMediaItem
 import io.music_assistant.client.data.repository.MediaItemRepository
 import io.music_assistant.client.ui.compose.common.DataState
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 
@@ -42,10 +44,12 @@ class ItemListViewModel(
                 mediaItemRepository.fetchAlbumGroups(itemList.artistId, itemList.providerInstance)
                     .onSuccess { groups ->
                         val base = if (itemList.owned) {
-                            groups.owned.sortedWith(compareByDescending<io.music_assistant.client.data.model.client.items.Album> { it.year ?: 0 }.thenBy { it.displayName })
+                            groups.owned.sortedWith(
+                                compareByDescending<Album> { it.year ?: 0 }.thenBy { it.displayName },
+                            )
                         } else {
                             val seen = mutableSetOf<String>()
-                            val list = mutableListOf<io.music_assistant.client.data.model.client.items.Album>()
+                            val list = mutableListOf<Album>()
                             for (item in groups.owned) {
                                 val key = item.name.trim().lowercase() + "|" + (item.year ?: "")
                                 seen.add(key)
@@ -58,12 +62,18 @@ class ItemListViewModel(
                                     list.add(item)
                                 }
                             }
-                            list.sortedWith(compareByDescending<io.music_assistant.client.data.model.client.items.Album> { it.isOwnedItem }.thenByDescending { it.year ?: 0 }.thenBy { it.displayName })
+                            list.sortedWith(
+                                compareByDescending<Album> {
+                                    it.isOwnedItem
+                                }.thenByDescending { it.year ?: 0 }.thenBy { it.displayName },
+                            )
                         }
                         val filtered = when (itemList.groupType) {
-                            "album" -> base.filter { it.albumType != io.music_assistant.client.data.model.client.AlbumType.EP && it.albumType != io.music_assistant.client.data.model.client.AlbumType.SINGLE }
-                            "ep" -> base.filter { it.albumType == io.music_assistant.client.data.model.client.AlbumType.EP }
-                            "single" -> base.filter { it.albumType == io.music_assistant.client.data.model.client.AlbumType.SINGLE }
+                            "album" -> base.filter {
+                                it.albumType != AlbumType.EP && it.albumType != AlbumType.SINGLE
+                            }
+                            "ep" -> base.filter { it.albumType == AlbumType.EP }
+                            "single" -> base.filter { it.albumType == AlbumType.SINGLE }
                             else -> base
                         }
                         items.value = filtered

@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -34,6 +33,8 @@ import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import io.music_assistant.client.ui.theme.outlineSubtle
+import io.music_assistant.client.ui.theme.surfaceRaised
 
 @Composable
 fun FloatingBar(
@@ -57,10 +58,10 @@ fun FloatingBar(
                     it.wrapContentHeight().clickable { onExpand(true) }
                 }
             },
-        color = Color(0xFF121215),
+        color = surfaceRaised,
         contentColor = Color.White,
         shape = RoundedCornerShape(clip),
-        border = if (!expanded) BorderStroke(0.5.dp, Color(0xFF27272A)) else null,
+        border = if (!expanded) BorderStroke(0.5.dp, outlineSubtle) else null,
     ) {
         Column {
             val contentPadding = if (expanded) {

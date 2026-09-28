@@ -18,7 +18,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
@@ -36,6 +35,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.navigation3.runtime.NavKey
 import androidx.window.core.layout.WindowSizeClass
+import io.music_assistant.client.ui.theme.dividerSubtle
+import io.music_assistant.client.ui.theme.iconMuted
 import io.music_assistant.client.utils.WindowClass
 
 /**
@@ -87,7 +88,7 @@ fun AdaptiveNavigationBarLayout(
                         },
                         colors = NavigationRailItemDefaults.colors(
                             selectedIconColor = Color.White,
-                            unselectedIconColor = Color(0xFF71717A),
+                            unselectedIconColor = iconMuted,
                             indicatorColor = Color.Transparent,
                         ),
                     )
@@ -111,7 +112,7 @@ fun AdaptiveNavigationBarLayout(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(0.5.dp)
-                        .background(Color(0xFF1E1E22))
+                        .background(dividerSubtle)
                         .align(Alignment.TopCenter),
                 )
                 NavigationBar(
@@ -128,7 +129,7 @@ fun AdaptiveNavigationBarLayout(
                             },
                             colors = NavigationBarItemDefaults.colors(
                                 selectedIconColor = Color.White,
-                                unselectedIconColor = Color(0xFF71717A),
+                                unselectedIconColor = iconMuted,
                                 indicatorColor = Color.Transparent,
                             ),
                         )

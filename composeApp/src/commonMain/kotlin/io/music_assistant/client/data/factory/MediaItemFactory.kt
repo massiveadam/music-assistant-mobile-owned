@@ -26,6 +26,8 @@ import io.music_assistant.client.data.model.server.ServerMediaItemImage
 import io.music_assistant.client.data.model.server.ServerMetadata
 import io.music_assistant.client.data.repository.SearchResultData
 
+private const val YEAR_LENGTH = 4
+
 /**
  * Maps server-side [ServerMediaItem] DTOs into typed client [AppMediaItem] subtypes.
  *
@@ -60,7 +62,7 @@ class MediaItemFactory(
                 uri = uri,
                 images = resolveImageInfo(image, metadata),
                 version = version,
-                year = year ?: metadata?.releaseDate?.take(4)?.toIntOrNull(),
+                year = year ?: metadata?.releaseDate?.take(YEAR_LENGTH)?.toIntOrNull(),
                 artists = artists?.mapNotNull { create(it) as? Artist } ?: emptyList(),
                 albumType = AlbumType.fromServer(albumType),
             )

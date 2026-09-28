@@ -61,11 +61,10 @@ import io.music_assistant.client.data.model.client.PlayerDataFixtures
 import io.music_assistant.client.data.model.client.ResolvedChapter
 import io.music_assistant.client.data.model.client.items.AppMediaItem
 import io.music_assistant.client.data.model.client.items.Artist
-import io.music_assistant.client.data.model.client.items.Track
-import io.music_assistant.client.ui.compose.common.items.ChooseArtistDialog
 import io.music_assistant.client.data.model.client.items.Audiobook
 import io.music_assistant.client.data.model.client.items.PodcastEpisode
 import io.music_assistant.client.data.model.client.items.QualityTier
+import io.music_assistant.client.data.model.client.items.Track
 import io.music_assistant.client.data.model.client.items.canBeFavorited
 import io.music_assistant.client.data.model.client.items.qualityTier
 import io.music_assistant.client.data.model.client.presentationChapter
@@ -78,10 +77,12 @@ import io.music_assistant.client.ui.compose.common.PlayerColors
 import io.music_assistant.client.ui.compose.common.action.PlayerAction
 import io.music_assistant.client.ui.compose.common.icons.AlbumIcon
 import io.music_assistant.client.ui.compose.common.icons.TrackIcon
+import io.music_assistant.client.ui.compose.common.items.ChooseArtistDialog
 import io.music_assistant.client.ui.compose.common.painters.rememberPlaceholderPainter
 import io.music_assistant.client.ui.fadingEdges
 import io.music_assistant.client.ui.inactive
 import io.music_assistant.client.ui.theme.favoriteTint
+import io.music_assistant.client.ui.theme.textMuted
 import io.music_assistant.client.utils.formatDuration
 import kotlinx.coroutines.flow.Flow
 import musicassistantclient.composeapp.generated.resources.Res
@@ -409,7 +410,11 @@ fun FullPlayerItem(
                     // RenderThread's native stack (SIGSEGV in HWUI prepareTree) — no-subtitle radios
                     // hit this. The empty Text still reserves one line; it just doesn't scroll.
                     val currentTrackItem = item.queueInfo?.currentItem?.track as? Track
-                    val hasClickableLinks = navigateToItem != null && currentChapter == null && currentTrackItem != null && (currentTrackItem.artists.isNotEmpty() || currentTrackItem.album != null)
+                    val hasClickableLinks =
+                        navigateToItem != null &&
+                            currentChapter == null &&
+                            currentTrackItem != null &&
+                            (currentTrackItem.artists.isNotEmpty() || currentTrackItem.album != null)
 
                     if (hasClickableLinks && currentTrackItem != null && navigateToItem != null) {
                         var artistChoices by remember { mutableStateOf<List<Artist>?>(null) }
@@ -434,7 +439,7 @@ fun FullPlayerItem(
                                     },
                                     text = currentTrackItem.artists.joinToString(", ") { it.displayName },
                                     style = MaterialTheme.typography.bodyLarge,
-                                    color = Color(0xFFA1A1AA),
+                                    color = textMuted,
                                     maxLines = 1,
                                 )
                             }
@@ -443,7 +448,7 @@ fun FullPlayerItem(
                                     Text(
                                         text = " • ",
                                         style = MaterialTheme.typography.bodyLarge,
-                                        color = Color(0xFFA1A1AA),
+                                        color = textMuted,
                                     )
                                 }
                                 Text(
@@ -452,7 +457,7 @@ fun FullPlayerItem(
                                     },
                                     text = currentTrackItem.album.name,
                                     style = MaterialTheme.typography.bodyLarge,
-                                    color = Color(0xFFA1A1AA),
+                                    color = textMuted,
                                     maxLines = 1,
                                 )
                             }
@@ -490,7 +495,7 @@ fun FullPlayerItem(
                                 .alphaOn(currentMedia?.title != null),
                             text = subtitle.orEmpty(), // TODO take from currentItem?
                             style = MaterialTheme.typography.bodyLarge,
-                            color = Color(0xFFA1A1AA),
+                            color = textMuted,
                             textAlign = TextAlign.Center,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -662,7 +667,7 @@ fun FullPlayerItem(
                             .formatDuration(DurationUnit.SECONDS)
                             .takeIf { timelineDuration != null } ?: "",
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFFA1A1AA),
+                        color = textMuted,
                     )
                 },
                 center = {
@@ -723,7 +728,7 @@ fun FullPlayerItem(
                             ?.let { timelineDuration?.formatDuration(DurationUnit.SECONDS) ?: "\u221E" }
                             ?: "",
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFFA1A1AA),
+                        color = textMuted,
                     )
                 },
             )

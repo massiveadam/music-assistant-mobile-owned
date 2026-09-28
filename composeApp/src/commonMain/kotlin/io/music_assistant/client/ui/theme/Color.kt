@@ -87,3 +87,15 @@ val surfaceContainerHighestDark = Color(0xFF222225)
 val favoriteTint: Color
     @Composable @ReadOnlyComposable
     get() = MaterialTheme.colorScheme.tertiary
+
+// ---- Shared component tokens ----
+// Inline colour literals used by the retheme live here so detekt's MagicNumber rule,
+// which excludes this file, sees each value once instead of scattered across composables.
+val iconMuted = Color(0xFF71717A)
+val textMuted = Color(0xFFA1A1AA)
+val placeholderText = Color(0xFF8E8E93)
+val surfaceSelected = Color(0xFF141416)
+val surfaceRaised = Color(0xFF121215)
+val dividerSubtle = Color(0xFF1E1E22)
+val hairlineBorder = Color(0xFF2E2E32)
+val outlineSubtle = Color(0xFF27272A)

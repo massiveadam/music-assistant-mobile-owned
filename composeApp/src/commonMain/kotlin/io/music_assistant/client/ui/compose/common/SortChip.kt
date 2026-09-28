@@ -2,16 +2,15 @@ package io.music_assistant.client.ui.compose.common
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.FilterChipDefaults
-import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -20,9 +19,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import io.music_assistant.client.data.model.client.SortField
 import io.music_assistant.client.data.model.client.SortOption
+import io.music_assistant.client.ui.theme.hairlineBorder
+import io.music_assistant.client.ui.theme.placeholderText
+import io.music_assistant.client.ui.theme.surfaceSelected
 import musicassistantclient.composeapp.generated.resources.*
 import musicassistantclient.composeapp.generated.resources.Res
 import org.jetbrains.compose.resources.stringResource
@@ -41,11 +44,11 @@ fun SortChip(
             onClick = { expanded = true },
             shape = RoundedCornerShape(8.dp),
             colors = FilterChipDefaults.filterChipColors(
-                selectedContainerColor = Color(0xFF141416),
+                selectedContainerColor = surfaceSelected,
                 selectedLabelColor = Color.White,
-                selectedTrailingIconColor = Color(0xFF8E8E93),
+                selectedTrailingIconColor = placeholderText,
             ),
-            border = BorderStroke(0.5.dp, Color(0xFF2E2E32)),
+            border = BorderStroke(0.5.dp, hairlineBorder),
             label = { Text(currentSort.field.localizedName()) },
             trailingIcon = {
                 Icon(

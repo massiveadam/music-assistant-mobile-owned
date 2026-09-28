@@ -2,8 +2,8 @@ package io.music_assistant.client.ui.compose.search
 
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -12,7 +12,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
@@ -28,6 +27,9 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import io.music_assistant.client.ui.theme.hairlineBorder
+import io.music_assistant.client.ui.theme.placeholderText
+import io.music_assistant.client.ui.theme.surfaceSelected
 import musicassistantclient.composeapp.generated.resources.Res
 import musicassistantclient.composeapp.generated.resources.common_clear
 import musicassistantclient.composeapp.generated.resources.search_query_label
@@ -54,7 +56,7 @@ fun SearchInput(
         modifier = modifier
             .fillMaxWidth()
             .height(54.dp)
-            .border(0.5.dp, Color(0xFF2E2E32), RoundedCornerShape(12.dp))
+            .border(0.5.dp, hairlineBorder, RoundedCornerShape(12.dp))
             .focusRequester(focusRequester),
         shape = RoundedCornerShape(12.dp),
         value = query,
@@ -92,16 +94,16 @@ fun SearchInput(
             null
         },
         colors = TextFieldDefaults.colors(
-            focusedContainerColor = Color(0xFF141416),
-            unfocusedContainerColor = Color(0xFF141416),
-            disabledContainerColor = Color(0xFF141416),
+            focusedContainerColor = surfaceSelected,
+            unfocusedContainerColor = surfaceSelected,
+            disabledContainerColor = surfaceSelected,
             focusedIndicatorColor = Color.Transparent,
             unfocusedIndicatorColor = Color.Transparent,
             disabledIndicatorColor = Color.Transparent,
             focusedTextColor = Color.White,
             unfocusedTextColor = Color.White,
-            focusedPlaceholderColor = Color(0xFF8E8E93),
-            unfocusedPlaceholderColor = Color(0xFF8E8E93),
+            focusedPlaceholderColor = placeholderText,
+            unfocusedPlaceholderColor = placeholderText,
         ),
     )
 }

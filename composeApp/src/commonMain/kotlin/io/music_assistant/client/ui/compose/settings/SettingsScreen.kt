@@ -36,14 +36,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
-import androidx.compose.material3.OutlinedTextField
-import io.music_assistant.client.updater.GitHubUpdateChecker
-import io.music_assistant.client.updater.UpdateCheckResult
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -83,6 +81,8 @@ import io.music_assistant.client.ui.compose.nav.BackHandler
 import io.music_assistant.client.ui.compose.nav.TopBarLayout
 import io.music_assistant.client.ui.theme.ThemeSetting
 import io.music_assistant.client.ui.theme.ThemeViewModel
+import io.music_assistant.client.updater.GitHubUpdateChecker
+import io.music_assistant.client.updater.UpdateCheckResult
 import io.music_assistant.client.utils.DataConnectionState
 import io.music_assistant.client.utils.SessionState
 import io.music_assistant.client.utils.isIpPort
@@ -157,6 +157,8 @@ import org.publicvalue.multiplatform.qrcode.CameraPosition
 import org.publicvalue.multiplatform.qrcode.CodeType
 import org.publicvalue.multiplatform.qrcode.ScannerWithPermissions
 import kotlin.math.roundToInt
+
+private const val CHANGELOG_PREVIEW_LENGTH = 300
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -568,7 +570,7 @@ private fun GitHubUpdatesSection(viewModel: SettingsViewModel) {
                         }
                         if (!res.changelog.isNullOrBlank()) {
                             Text(
-                                text = res.changelog.take(300),
+                                text = res.changelog.take(CHANGELOG_PREVIEW_LENGTH),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),

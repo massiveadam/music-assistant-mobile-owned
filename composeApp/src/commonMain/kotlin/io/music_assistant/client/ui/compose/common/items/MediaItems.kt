@@ -4,23 +4,18 @@
 package io.music_assistant.client.ui.compose.common.items
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.ui.unit.sp
-import io.music_assistant.client.data.model.client.items.isOwnedItem
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -40,7 +35,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,6 +50,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import io.music_assistant.client.data.model.client.ImageType
 import io.music_assistant.client.data.model.client.items.Album
@@ -71,7 +66,9 @@ import io.music_assistant.client.data.model.client.items.RadioStation
 import io.music_assistant.client.data.model.client.items.RecommendationFolder
 import io.music_assistant.client.data.model.client.items.Track
 import io.music_assistant.client.data.model.client.items.image
+import io.music_assistant.client.data.model.client.items.isOwnedItem
 import io.music_assistant.client.settings.ViewMode
+import io.music_assistant.client.ui.compose.common.icons.AlbumIcon
 import io.music_assistant.client.ui.compose.common.icons.ArtistIcon
 import io.music_assistant.client.ui.compose.common.icons.BookAudioIcon
 import io.music_assistant.client.ui.compose.common.icons.GenreIcon
@@ -79,9 +76,6 @@ import io.music_assistant.client.ui.compose.common.icons.PlaylistIcon
 import io.music_assistant.client.ui.compose.common.icons.RadioIcon
 import io.music_assistant.client.ui.compose.common.icons.TrackIcon
 import io.music_assistant.client.ui.compose.common.painters.rememberPlaceholderPainter
-import io.music_assistant.client.ui.compose.common.painters.rememberVinylRecordPainter
-import io.music_assistant.client.data.model.client.AlbumType
-import io.music_assistant.client.ui.compose.common.icons.AlbumIcon
 import io.music_assistant.client.ui.theme.favoriteTint
 import io.music_assistant.client.utils.gridItemMinSize
 import io.music_assistant.client.utils.rowImageSize
@@ -90,7 +84,6 @@ import musicassistantclient.composeapp.generated.resources.cd_album_item
 import musicassistantclient.composeapp.generated.resources.cd_favorite
 import musicassistantclient.composeapp.generated.resources.cd_fully_played
 import musicassistantclient.composeapp.generated.resources.cd_in_progress
-import musicassistantclient.composeapp.generated.resources.cd_vinyl_record
 import org.jetbrains.compose.resources.stringResource
 
 /** Opacity applied to media items that can't be played (server `is_playable == false`). */
@@ -413,8 +406,6 @@ private fun TrackImage(
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),
         )
-
-
     }
 }
 

@@ -6,6 +6,7 @@ import co.touchlab.kermit.Logger
 import io.music_assistant.client.api.Request
 import io.music_assistant.client.api.ServiceClient
 import io.music_assistant.client.data.MainDataSource
+import io.music_assistant.client.data.model.client.AlbumType
 import io.music_assistant.client.data.model.client.MediaType
 import io.music_assistant.client.data.model.client.QueueOption
 import io.music_assistant.client.data.model.client.SortConfig
@@ -14,7 +15,6 @@ import io.music_assistant.client.data.model.client.SubItemContext
 import io.music_assistant.client.data.model.client.clientSorted
 import io.music_assistant.client.data.model.client.items.Album
 import io.music_assistant.client.data.model.client.items.AppMediaItem
-import io.music_assistant.client.data.model.client.items.isOwnedItem
 import io.music_assistant.client.data.model.client.items.Artist
 import io.music_assistant.client.data.model.client.items.Audiobook
 import io.music_assistant.client.data.model.client.items.Genre
@@ -24,6 +24,7 @@ import io.music_assistant.client.data.model.client.items.Podcast
 import io.music_assistant.client.data.model.client.items.PodcastEpisode
 import io.music_assistant.client.data.model.client.items.RecommendationFolder
 import io.music_assistant.client.data.model.client.items.Track
+import io.music_assistant.client.data.model.client.items.isOwnedItem
 import io.music_assistant.client.data.model.server.ProviderMapping
 import io.music_assistant.client.data.repository.MediaItemRepository
 import io.music_assistant.client.settings.SettingsRepository
@@ -266,36 +267,49 @@ class ItemDetailsViewModel(
                         }
                     }
                     // 3. Sort chronologically descending: newest release first!
-                    val sorted = list.sortedWith(compareByDescending<Album> { it.isOwnedItem }.thenByDescending { it.year ?: 0 }.thenBy { it.displayName })
-                    Triple(
-                        sorted.filter { it.albumType != io.music_assistant.client.data.model.client.AlbumType.EP && it.albumType != io.music_assistant.client.data.model.client.AlbumType.SINGLE },
-                        sorted.filter { it.albumType == io.music_assistant.client.data.model.client.AlbumType.EP },
-                        sorted.filter { it.albumType == io.music_assistant.client.data.model.client.AlbumType.SINGLE },
+                    val sorted = list.sortedWith(
+                        compareByDescending<Album> { it.isOwnedItem }.thenByDescending { it.year ?: 0 }.thenBy { it.displayName },
                     )
-                } else Triple(null, null, null)
+                    Triple(
+                        sorted.filter {
+                            it.albumType != AlbumType.EP && it.albumType != AlbumType.SINGLE
+                        },
+                        sorted.filter { it.albumType == AlbumType.EP },
+                        sorted.filter { it.albumType == AlbumType.SINGLE },
+                    )
+                } else {
+                    Triple(null, null, null)
+                }
 
                 val albumsSection = mergedAlbums?.let {
-                    DataState.Data(Section(
+                    DataState.Data(
+                        Section(
                         items = it.take(ARTIST_SECTION_LIMIT),
                         itemList = ItemList.ArtistAlbumGroup(artist.provider, artist.itemId, owned = false, groupType = "album"),
-                    ))
+                    ),
+                    )
                 } ?: DataState.Error()
 
                 val epsSection = mergedEps?.let {
-                    DataState.Data(Section(
+                    DataState.Data(
+                        Section(
                         items = it.take(ARTIST_SECTION_LIMIT),
                         itemList = ItemList.ArtistAlbumGroup(artist.provider, artist.itemId, owned = false, groupType = "ep"),
-                    ))
+                    ),
+                    )
                 } ?: DataState.Error()
 
                 val singlesSection = mergedSingles?.let {
-                    DataState.Data(Section(
+                    DataState.Data(
+                        Section(
                         items = it.take(ARTIST_SECTION_LIMIT),
                         itemList = ItemList.ArtistAlbumGroup(artist.provider, artist.itemId, owned = false, groupType = "single"),
-                    ))
+                    ),
+                    )
                 } ?: DataState.Error()
 
-                state.copy(artistSections = state.artistSections.copy(
+                state.copy(
+                    artistSections = state.artistSections.copy(
                     albums = albumsSection,
                     eps = epsSection,
                     singles = singlesSection,
@@ -306,7 +320,8 @@ class ItemDetailsViewModel(
                     allEps = epsSection,
                     allSingles = singlesSection,
                     incompleteAlbums = groups?.unavailableSources?.isNotEmpty() == true,
-                ))
+                ),
+                )
             }
         }
 

@@ -4,6 +4,7 @@
 package io.music_assistant.client.ui.compose.home
 
 import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -12,12 +13,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
@@ -31,7 +31,6 @@ import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -66,9 +65,8 @@ import io.music_assistant.client.data.model.client.ImageType
 import io.music_assistant.client.data.model.client.Queue
 import io.music_assistant.client.data.model.client.items.AppMediaItem
 import io.music_assistant.client.data.model.client.items.Track
-import io.music_assistant.client.data.model.client.items.isOwnedItem
-import io.music_assistant.client.ui.compose.common.items.OwnedPill
 import io.music_assistant.client.data.model.client.items.image
+import io.music_assistant.client.data.model.client.items.isOwnedItem
 import io.music_assistant.client.imageloader.rememberArtworkRequest
 import io.music_assistant.client.ui.compose.common.DataState
 import io.music_assistant.client.ui.compose.common.NoOverscroll
@@ -76,9 +74,9 @@ import io.music_assistant.client.ui.compose.common.action.QueueAction
 import io.music_assistant.client.ui.compose.common.icons.PlayIcon
 import io.music_assistant.client.ui.compose.common.icons.TrackIcon
 import io.music_assistant.client.ui.compose.common.items.DISABLED_ITEM_ALPHA
+import io.music_assistant.client.ui.compose.common.items.OwnedPill
 import io.music_assistant.client.ui.compose.common.items.localizedSubtitle
 import io.music_assistant.client.ui.compose.common.painters.rememberPlaceholderPainter
-import io.music_assistant.client.ui.contentColorByLuminance
 import io.music_assistant.client.utils.conditional
 import io.music_assistant.client.utils.formatDuration
 import kotlinx.coroutines.flow.Flow
@@ -110,7 +108,6 @@ fun CollapsibleQueue(
     onQueueExpandedSwitch: () -> Unit,
     onGoToLibrary: () -> Unit,
     queueAction: (QueueAction) -> Unit,
-    tint: Color,
     isCurrentPage: Boolean = true,
     contentPadding: PaddingValues,
     onAddToPlaylist: ((AppMediaItem) -> Unit)? = null,

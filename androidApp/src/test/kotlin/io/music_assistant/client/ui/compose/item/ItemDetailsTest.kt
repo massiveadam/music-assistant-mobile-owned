@@ -1,11 +1,5 @@
 package io.music_assistant.client.ui.compose.item
 
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.view.View
-import androidx.compose.ui.platform.LocalView
-import java.io.File
-import org.robolectric.annotation.GraphicsMode
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
@@ -33,8 +27,8 @@ import io.music_assistant.client.utils.support.MockFunction2
 import musicassistantclient.composeapp.generated.resources.Res
 import musicassistantclient.composeapp.generated.resources.action_go_to_artist
 import musicassistantclient.composeapp.generated.resources.cd_album_item
-import musicassistantclient.composeapp.generated.resources.cd_view_all
 import musicassistantclient.composeapp.generated.resources.cd_more
+import musicassistantclient.composeapp.generated.resources.cd_view_all
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -126,8 +120,12 @@ class ItemDetailsTest {
             )
         }
         composeTestRule.inScrollable("LazyVerticalGrid") {
-            onNode(hasContentDescription(Res.string.cd_album_item.get(owned.displayName, owned.provider))).assertIsDisplayed()
-            onNode(hasContentDescription(Res.string.cd_album_item.get(streaming.displayName, streaming.provider))).assertIsDisplayed()
+            onNode(
+                hasContentDescription(Res.string.cd_album_item.get(owned.displayName, owned.provider)),
+            ).assertIsDisplayed()
+            onNode(
+                hasContentDescription(Res.string.cd_album_item.get(streaming.displayName, streaming.provider)),
+            ).assertIsDisplayed()
             onNode(hasContentDescription(Res.string.cd_view_all.get("Albums"))).performClick()
             assertEquals("Albums" to allList, navigatedTo)
         }

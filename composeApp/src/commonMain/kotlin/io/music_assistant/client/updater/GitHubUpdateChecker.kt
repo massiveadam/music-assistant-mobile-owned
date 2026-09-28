@@ -4,6 +4,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.HttpStatusCode
 import io.music_assistant.client.utils.createPlatformHttpClient
 import io.music_assistant.client.utils.myJson
 import kotlinx.serialization.SerialName
@@ -63,7 +64,7 @@ class GitHubUpdateChecker(
                 header("User-Agent", "MusicAssistantOwnedApp")
             }
 
-            if (response.status.value == 404) {
+            if (response.status == HttpStatusCode.NotFound) {
                 return UpdateCheckResult.Error("No releases found on GitHub repo $trimmed yet.")
             }
             if (response.status.value !in 200..299) {

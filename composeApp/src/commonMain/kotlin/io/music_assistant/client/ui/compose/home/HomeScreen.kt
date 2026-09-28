@@ -61,8 +61,8 @@ import io.music_assistant.client.ui.compose.common.CenteredProgress
 import io.music_assistant.client.ui.compose.common.CenteredText
 import io.music_assistant.client.ui.compose.common.DataState
 import io.music_assistant.client.ui.compose.common.items.CategoryRow
-import io.music_assistant.client.ui.compose.common.items.PlayHandler
 import io.music_assistant.client.ui.compose.common.items.ItemCategory
+import io.music_assistant.client.ui.compose.common.items.PlayHandler
 import io.music_assistant.client.ui.compose.common.items.ProvideClickActions
 import io.music_assistant.client.ui.compose.common.items.lazyListKey
 import io.music_assistant.client.ui.compose.common.moveToEnabledBoundary
@@ -157,7 +157,8 @@ fun HomeScreen(
             )
         } else {
             val onPlayClickLambda: PlayHandler<AppMediaItem> = remember(homeScreenViewModel) {
-                { item, option, radio, _ ->
+                {
+                    item, option, radio, _ ->
                     homeScreenViewModel.onPlayClick(item, option, radio)
                 }
             }
