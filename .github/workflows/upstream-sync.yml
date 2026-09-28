@@ -58,9 +58,7 @@ jobs:
           else
             gh pr create --base main --head upstream-sync \
               --title "chore: sync with upstream music-assistant/mobile-app" \
-              --body "Automated weekly merge of upstream into this branch.
-
-Review the diff and resolve any behavior changes before merging — this PR is never auto-merged."
+              --body "Automated weekly merge of upstream. Review the diff and resolve any behavior changes before merging; this PR is never auto-merged."
           fi
 
       - name: Report conflict
