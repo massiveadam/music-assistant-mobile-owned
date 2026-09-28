@@ -51,6 +51,14 @@ jobs:
           sha256sum Music-Assistant-Owned.apk > Music-Assistant-Owned.apk.sha256
           echo "SHA=$(cut -d' ' -f1 < Music-Assistant-Owned.apk.sha256)" >> $GITHUB_OUTPUT
 
+      # Print the signing certificate so the log shows which key produced the
+      # artifact (should match the installed app's key).
+      - name: Verify release signature
+        run: |
+          BUILD_TOOLS="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          "$BUILD_TOOLS/apksigner" verify --print-certs release-assets/Music-Assistant-Owned.apk \
+            | grep -i "certificate SHA-256 digest"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
