@@ -63,6 +63,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import io.music_assistant.client.AppVersion
 import io.music_assistant.client.api.ConnectionInfo
 import io.music_assistant.client.api.Defaults
 import io.music_assistant.client.data.model.server.ServerInfo
@@ -81,7 +82,6 @@ import io.music_assistant.client.ui.compose.nav.BackHandler
 import io.music_assistant.client.ui.compose.nav.TopBarLayout
 import io.music_assistant.client.ui.theme.ThemeSetting
 import io.music_assistant.client.ui.theme.ThemeViewModel
-import io.music_assistant.client.updater.GitHubUpdateChecker
 import io.music_assistant.client.updater.UpdateCheckResult
 import io.music_assistant.client.utils.DataConnectionState
 import io.music_assistant.client.utils.SessionState
@@ -504,7 +504,7 @@ private fun GitHubUpdatesSection(viewModel: SettingsViewModel) {
         SectionTitle("Updates (GitHub)")
 
         Text(
-            text = "Current Version: ${GitHubUpdateChecker.CURRENT_APP_VERSION}",
+            text = "Current Version: ${AppVersion.versionName}",
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurface,

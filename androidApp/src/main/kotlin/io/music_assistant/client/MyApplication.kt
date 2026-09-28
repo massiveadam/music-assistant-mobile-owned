@@ -18,6 +18,8 @@ import java.io.File
 class MyApplication : Application() {
     override fun onCreate() {
         super.onCreate()
+        AppVersion.versionName =
+            packageManager.getPackageInfo(packageName, 0).versionName ?: "unknown"
         val debuggable = (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
         initKoin(androidModule(), appModule(), verboseLogging = debuggable) {
             androidContext(this@MyApplication)

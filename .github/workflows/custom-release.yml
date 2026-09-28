@@ -27,14 +27,26 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
 
+      # Sign with the same keystore the currently installed app already trusts,
+      # so CI-built releases install as updates over existing installs. The
+      # selfSignedRelease variant reads ~/.android/debug.keystore, matching the
+      # local deploy-update.sh pipeline.
+      - name: Install signing keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          mkdir -p "$HOME/.android"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$HOME/.android/debug.keystore"
+          test -s "$HOME/.android/debug.keystore"
+
       - name: Build Android APK
-        run: ./gradlew :androidApp:assembleDebug --console=plain
+        run: ./gradlew :androidApp:assembleSelfSignedRelease --console=plain
 
       - name: Prepare Release Artifacts
         id: prepare
         run: |
           mkdir -p release-assets
-          cp androidApp/build/outputs/apk/debug/androidApp-debug.apk release-assets/Music-Assistant-Owned.apk
+          cp androidApp/build/outputs/apk/selfSignedRelease/androidApp-universal-selfSignedRelease.apk release-assets/Music-Assistant-Owned.apk
           cd release-assets
           sha256sum Music-Assistant-Owned.apk > Music-Assistant-Owned.apk.sha256
           echo "SHA=$(cut -d' ' -f1 < Music-Assistant-Owned.apk.sha256)" >> $GITHUB_OUTPUT

@@ -5,6 +5,7 @@ import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
+import io.music_assistant.client.AppVersion
 import io.music_assistant.client.utils.createPlatformHttpClient
 import io.music_assistant.client.utils.myJson
 import kotlinx.serialization.SerialName
@@ -47,7 +48,7 @@ class GitHubUpdateChecker(
 ) {
     suspend fun checkForUpdates(
         repo: String,
-        currentVersion: String = CURRENT_APP_VERSION,
+        currentVersion: String = AppVersion.versionName,
     ): UpdateCheckResult {
         val trimmed = repo.trim()
             .removePrefix("https://github.com/")
@@ -102,9 +103,5 @@ class GitHubUpdateChecker(
             if (lParts[i] < cParts[i]) return false
         }
         return latest != current && !current.contains(latest)
-    }
-
-    companion object {
-        const val CURRENT_APP_VERSION = "0.14.3-owned"
     }
 }
