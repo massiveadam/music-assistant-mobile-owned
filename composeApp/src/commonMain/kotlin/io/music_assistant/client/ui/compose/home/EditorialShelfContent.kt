@@ -38,6 +38,7 @@ fun EditorialShelfContent(
     source: EditorialSource, feed: EditorialFeed?, limit: Int, enabled: Boolean,
     loading: Boolean, error: String?, onLimit: (Int) -> Unit, onReload: () -> Unit,
     onSource: () -> Unit, onFind: (EditorialEntry) -> Unit, onReview: (EditorialEntry) -> Unit,
+    artworkOverrides: Map<String, String> = emptyMap(),
 ) {
     var chooseLimit by remember(source.id) { mutableStateOf(false) }
     var showDetails by remember(source.id) { mutableStateOf(false) }
@@ -95,7 +96,8 @@ fun EditorialShelfContent(
                     else "No releases from the last seven days in the current snapshot.", modifier = Modifier.padding(16.dp))
                 else -> LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     items(feed?.entries.orEmpty().take(limit), key = { "${it.artist}:${it.title}" }) { entry ->
-                        EditorialAlbumCard(entry, Modifier.width(cardWidth), onFind = { onFind(entry) }, onReview = { onReview(entry) })
+                        EditorialAlbumCard(entry, Modifier.width(cardWidth), onFind = { onFind(entry) },
+                            onReview = { onReview(entry) }, artworkOverride = artworkOverrides[entry.url])
                     }
                 }
             }
@@ -118,15 +120,23 @@ fun EditorialShelfContent(
 }
 
 @Composable
-fun EditorialAlbumCard(entry: EditorialEntry, modifier: Modifier = Modifier, onFind: () -> Unit, onReview: () -> Unit) {
+fun EditorialAlbumCard(entry: EditorialEntry, modifier: Modifier = Modifier, onFind: () -> Unit, onReview: () -> Unit,
+    artworkOverride: String? = null,
+) {
+    var failedArtwork by remember(entry.url, entry.image) { mutableStateOf<Set<String>>(emptySet()) }
+    val artwork = listOfNotNull(artworkOverride, entry.image).distinct().firstOrNull { it !in failedArtwork }
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val singleBadgeWidth = (104 * LocalDensity.current.fontScale).dp
     Column(modifier.testTag("editorial-card:${entry.title}")) {
         Box(Modifier.fillMaxWidth().aspectRatio(1f).testTag("editorial-cover:${entry.title}").clip(RoundedCornerShape(8.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
             Text(entry.title.take(1), fontSize = 56.sp, color = muted.copy(alpha = .5f))
-            AsyncImage(model = entry.image, contentDescription = "${entry.title} by ${entry.artist}",
-                contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            AsyncImage(model = artwork, contentDescription = "${entry.title} by ${entry.artist}",
+                contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
+                onError = { state ->
+                    // The failed request may predate a newly arrived catalog cover.
+                    (state.result.request.data as? String)?.let { failedArtwork = failedArtwork + it }
+                })
             Row(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(6.dp),
                 horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.Bottom) {
                 entry.scores.critic?.let { EditorialScoreBadge("Critics", it, "reviews",

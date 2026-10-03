@@ -14,12 +14,19 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.music_assistant.client.api.PersonalApi
 import io.music_assistant.client.api.Request
 import io.music_assistant.client.data.model.client.MediaType
+import io.music_assistant.client.data.model.client.ImageType
 import io.music_assistant.client.data.model.client.items.Album
 import io.music_assistant.client.data.model.server.*
 import io.music_assistant.client.data.repository.MediaItemRepository
 import io.music_assistant.client.settings.SettingsRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.compose.koinInject
 
 class EditorialHomeState(val session: PersonalApi.Session?) {
@@ -69,6 +76,7 @@ fun EditorialShelf(
     var searchResults by remember(session) { mutableStateOf<List<Album>?>(null) }
     var searchError by remember(session) { mutableStateOf<String?>(null) }
     var searchGeneration by remember(session) { mutableStateOf(0) }
+    var artworkOverrides by remember(source.id, session) { mutableStateOf<Map<String, String>>(emptyMap()) }
 
     LaunchedEffect(source.id, session, enabled, refresh, reload) {
         if (!enabled || session == null) return@LaunchedEffect
@@ -81,6 +89,39 @@ fun EditorialShelf(
         } catch (e: CancellationException) { throw e }
         catch (_: Exception) { error = "This review list could not be loaded. Try again." }
         finally { loading = false }
+    }
+
+    // Match only this viewer's first visible albums, with bounded work. Publisher
+    // images remain available while searches run or a match is ambiguous.
+    LaunchedEffect(source.id, session, enabled, feed, limit, refresh, reload) {
+        artworkOverrides = emptyMap()
+        val current = session ?: return@LaunchedEffect
+        val snapshot = feed ?: return@LaunchedEffect
+        if (!enabled || !current.same(api.session())) return@LaunchedEffect
+        val permits = Semaphore(4)
+        coroutineScope {
+            snapshot.entries.take(limit.coerceAtMost(20)).forEach { entry ->
+                launch {
+                    permits.withPermit {
+                        try {
+                            api.requireCurrent(current)
+                            val candidates = withTimeoutOrNull(20_000) {
+                                media.search(Request.Library.search(
+                                    "${entry.artist} - ${entry.title}", listOf(MediaType.ALBUM), 5,
+                                    libraryOnly = false,
+                                )).getOrThrow().albums
+                            } ?: return@withPermit
+                            currentCoroutineContext().ensureActive()
+                            api.requireCurrent(current)
+                            if (feed !== snapshot || !enabled) return@withPermit
+                            val url = matchEditorialAlbum(entry, candidates)?.image(ImageType.THUMB)?.url
+                            if (!url.isNullOrBlank()) artworkOverrides = artworkOverrides + (entry.url to url)
+                        } catch (cancelled: CancellationException) { throw cancelled }
+                        catch (_: Exception) { /* Keep publisher artwork on a failed match. */ }
+                    }
+                }
+            }
+        }
     }
 
     fun openLink(url: String) {
@@ -118,6 +159,7 @@ fun EditorialShelf(
         onLimit = { count -> limit = count; settings.setEditorialLimit(source.id, count, owner) },
         onReload = { reload++ }, onSource = { openLink(feed?.source?.url ?: source.url) },
         onFind = { find(it) }, onReview = { openLink(it.url) },
+        artworkOverrides = artworkOverrides,
     )
     searchTitle?.let { title ->
         fun dismiss() { searchGeneration++; searchTitle = null }
