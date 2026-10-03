@@ -2,6 +2,7 @@
 
 package io.music_assistant.client.ui.compose.library
 
+import androidx.compose.material.icons.outlined.MailOutline
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -71,6 +72,7 @@ fun LibraryScreen(
     onCategoryClick: (LibraryCategory) -> Unit,
     onMyMusic: () -> Unit = {},
     onCollections: () -> Unit = {},
+    onInbox: () -> Unit = {},
 ) {
     val categoriesState by libraryCategoriesViewModel.state.collectAsStateWithLifecycle()
 
@@ -100,6 +102,9 @@ fun LibraryScreen(
                 title = { Text(stringResource(Res.string.nav_library)) },
                 actions = {
                     androidx.compose.material3.TextButton(onClick = onMyMusic) { Text("My music") }
+                    IconButton(onClick = onInbox) {
+                        androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Outlined.MailOutline, "Inbox")
+                    }
                     androidx.compose.material3.TextButton(onClick = onCollections) { Text("Collections") }
                     IconButton(
                         onClick = {

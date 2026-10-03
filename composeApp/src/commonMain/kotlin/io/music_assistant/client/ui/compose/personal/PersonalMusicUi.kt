@@ -68,6 +68,7 @@ fun AlbumCollectionControls(album: Album) {
             scope.launch { repository.collectionAction(if (inLater) "remove" else "add",
                 PersonalMusicRepository.LISTEN_LATER, album.mediaUri) }
         }) { Text(if (inLater) "In Listen Later" else "Listen Later") }
+        SendAlbumButton(album)
         OutlinedButton(onClick = { chooser = true }) { Text("Collections") }
     }
     state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }

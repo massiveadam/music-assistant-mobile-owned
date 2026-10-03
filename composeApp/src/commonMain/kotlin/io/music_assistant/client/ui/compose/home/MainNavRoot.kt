@@ -384,6 +384,7 @@ private fun mainNavEntryProvider(
                 state = screenState,
                 onMyMusic = { multiBackStack.add(MainNav.MyMusic) },
                 onCollections = { multiBackStack.add(MainNav.AlbumCollections) },
+                onInbox = { multiBackStack.add(MainNav.Inbox) },
             )
         }
 
@@ -399,6 +400,7 @@ private fun mainNavEntryProvider(
                 state = screenState,
                 onMyMusic = { multiBackStack.add(MainNav.MyMusic) },
                 onCollections = { multiBackStack.add(MainNav.AlbumCollections) },
+                onInbox = { multiBackStack.add(MainNav.Inbox) },
                 onCategoryClick = { category ->
                     when (category) {
                         LibraryCategory.BROWSE ->
@@ -413,6 +415,18 @@ private fun mainNavEntryProvider(
             )
         }
 
+        entry<MainNav.Inbox> {
+            io.music_assistant.client.ui.compose.personal.AlbumInboxScreen(
+                contentPadding = contentPadding,
+                onBack = { multiBackStack.removeLastOrNull() },
+                onNavigateClick = { item -> multiBackStack.add(MainNav.ItemDetails(item.itemId, item.mediaType, item.provider)) },
+                onFindAlbum = { query ->
+                    pendingSearch = GlobalSearchRequest(query, MediaType.ALBUM)
+                    multiBackStack.currentBackStack = 2
+                    multiBackStack.resetCurrentBackStack()
+                },
+            )
+        }
         entry<MainNav.MyMusic> {
             io.music_assistant.client.ui.compose.personal.PersonalMusicScreen(
                 contentPadding, { multiBackStack.removeLastOrNull() },
@@ -645,6 +659,9 @@ private sealed interface MainNav : NavKey {
     data object AlbumCollections : MainNav
 
     @Serializable
+    data object Inbox : MainNav
+
+    @Serializable
     data class LibraryList(val mediaType: MediaType) : MainNav
 
     /** Stations of the optional `ai_radio` plugin. Not a media type, hence its own route. */
@@ -697,6 +714,7 @@ private fun rememberMainNavBackStack(bottom: MainNav) = rememberNavBackStack(
                     subclass(MainNav.Landing::class, MainNav.Landing.serializer())
                     subclass(MainNav.Library::class, MainNav.Library.serializer())
                     subclass(MainNav.MyMusic::class, MainNav.MyMusic.serializer())
+                    subclass(MainNav.Inbox::class, MainNav.Inbox.serializer())
                     subclass(MainNav.AlbumCollections::class, MainNav.AlbumCollections.serializer())
                     subclass(MainNav.LibraryList::class, MainNav.LibraryList.serializer())
                     subclass(MainNav.AiRadio::class, MainNav.AiRadio.serializer())

@@ -3,6 +3,8 @@
 
 package io.music_assistant.client.ui.compose.home
 
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -97,6 +99,7 @@ fun HomeScreen(
     state: HomeScreenState,
     onMyMusic: () -> Unit = {},
     onCollections: () -> Unit = {},
+    onInbox: () -> Unit = {},
 ) {
     val homeScreenState by homeScreenViewModel.state.collectAsStateWithLifecycle()
     var editorialRefresh by remember { mutableStateOf(0) }
@@ -251,8 +254,9 @@ fun HomeScreen(
                 ) {
                     if (!editMode) {
                         item {
-                            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
                                 androidx.compose.material3.TextButton(onClick = onMyMusic) { Text("My music") }
+                                androidx.compose.material3.TextButton(onClick = onInbox) { Text("Inbox") }
                                 androidx.compose.material3.TextButton(onClick = onCollections) { Text("Album collections") }
                             }
                             personalState.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp)) }
@@ -412,6 +416,7 @@ private fun LandingPageTopBar(
     title: String = "Your music",
     onMyMusic: () -> Unit = {},
     onCollections: () -> Unit = {},
+    onInbox: () -> Unit = {},
 ) {
     TopAppBar(
         title = { Text(title) },

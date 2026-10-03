@@ -8,9 +8,9 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasContentDescription
@@ -51,7 +51,6 @@ class HomePage(composeTestRule: ComposeTestRule) : ComposePage(composeTestRule) 
         // Recommendation assertions can scroll the collapsing toolbar out of view.
         if (composeTestRule.onAllNodesWithTag(HomeScreenSemantics.LIST_TAG).fetchSemanticsNodes().isNotEmpty()) {
             composeTestRule.onNodeWithTag(HomeScreenSemantics.LIST_TAG).performScrollToIndex(0)
-            // Programmatic list scrolling does not expand enterAlways's app bar.
             composeTestRule.onNodeWithTag(HomeScreenSemantics.LIST_TAG).performTouchInput { swipeDown() }
         }
         composeTestRule.waitForIdle()
@@ -88,7 +87,7 @@ class HomePage(composeTestRule: ComposeTestRule) : ComposePage(composeTestRule) 
                 composeTestRule.onNodeWithTag(HomeScreenSemantics.LIST_TAG).performScrollToNode(album and hasAnyAncestor(row))
                 composeTestRule.onNode(album and hasAnyAncestor(row)).isDisplayed()
             }.onFailure { lastError = it }.getOrDefault(false)
-        } } catch (e: Throwable) {
+        } } catch (e: Exception) {
             throw AssertionError("${lastError?.message}\n${composeTestRule.onRoot().printToString()}", e)
         }
         return this
