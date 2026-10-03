@@ -2,21 +2,15 @@
 
 package io.music_assistant.client.ui.compose.home
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalUriHandler
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil3.compose.AsyncImage
 import io.music_assistant.client.api.PersonalApi
 import io.music_assistant.client.api.Request
 import io.music_assistant.client.data.model.client.MediaType
@@ -27,7 +21,6 @@ import io.music_assistant.client.settings.SettingsRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
-import kotlin.time.Instant
 
 class EditorialHomeState(val session: PersonalApi.Session?) {
     var sources by mutableStateOf<List<EditorialSource>>(emptyList())
@@ -72,7 +65,6 @@ fun EditorialShelf(
     var error by remember(source.id, session) { mutableStateOf<String?>(null) }
     var reload by remember { mutableStateOf(0) }
     var limit by remember(source.id, session) { mutableStateOf(settings.editorialLimit(source.id, owner)) }
-    var chooseLimit by remember { mutableStateOf(false) }
     var searchTitle by remember(session) { mutableStateOf<String?>(null) }
     var searchResults by remember(session) { mutableStateOf<List<Album>?>(null) }
     var searchError by remember(session) { mutableStateOf<String?>(null) }
@@ -120,71 +112,13 @@ fun EditorialShelf(
         }
     }
 
-    Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
-        Text(source.name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 16.dp))
-        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box {
-                TextButton(onClick = { chooseLimit = true }) { Text("$limit albums") }
-                DropdownMenu(expanded = chooseLimit, onDismissRequest = { chooseLimit = false }) {
-                    listOf(10, 20, 25, 50).forEach { count ->
-                        DropdownMenuItem(text = { Text("$count albums") }, onClick = {
-                            limit = count; settings.setEditorialLimit(source.id, count, owner); chooseLimit = false
-                        })
-                    }
-                }
-            }
-            TextButton(onClick = { reload++ }, enabled = enabled && !loading) { Text("Reload") }
-            TextButton(onClick = { openLink(feed?.source?.url ?: source.url) }) { Text("Open source") }
-        }
-        feed?.let { value ->
-            val window = value.window
-            val range = window?.let { "${it.start} to ${it.end}. " }.orEmpty()
-            val order = when (window?.ranking) { "critic" -> "Critic score order."; "user" -> "User score order."; else -> "Source chart order." }
-            val period = if (window?.dateField == "review_date") "Reviews published this week." else "Released in the last seven days."
-            Text("$range$period $order" + if (value.stale) " Older snapshot." else "",
-                style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp))
-            val captured = value.fetchedAt?.let { runCatching { Instant.fromEpochSeconds(it.toLong()).toString().take(10) }.getOrNull() }
-            Text(captured?.let { "Snapshot captured $it." } ?: "Capture date unavailable.",
-                style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp))
-            if (value.note.isNotBlank()) Text(value.note, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(16.dp))
-        }
-        when {
-            !enabled -> Text("Enable this row to see albums and scores.", modifier = Modifier.padding(16.dp))
-            error != null -> Text(error!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp))
-            loading && feed == null -> LinearProgressIndicator(Modifier.fillMaxWidth().padding(16.dp))
-            feed?.entries?.isEmpty() == true -> Text(
-                if (feed?.window?.dateField == "review_date") "No Best New Music reviews from the last seven days in the current snapshot."
-                else "No releases from the last seven days in the current snapshot.", modifier = Modifier.padding(16.dp))
-            else -> LazyRow(contentPadding = PaddingValues(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                items(feed?.entries.orEmpty().take(limit), key = { "${it.artist}:${it.title}" }) { entry ->
-                    Column(Modifier.width(176.dp)) {
-                        Box(Modifier.size(176.dp).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
-                            Text(entry.title.take(1), style = MaterialTheme.typography.displayLarge)
-                            AsyncImage(model = entry.image, contentDescription = "${entry.title} by ${entry.artist}",
-                                contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                        }
-                        Text(entry.title, fontWeight = FontWeight.SemiBold, maxLines = 2, modifier = Modifier.padding(top = 8.dp))
-                        Text(entry.artist, maxLines = 2, style = MaterialTheme.typography.bodySmall)
-                        entry.releaseDate?.let { Text("Released $it", style = MaterialTheme.typography.bodySmall) }
-                        fun scoreText(score: EditorialScore) = "${score.value}/${score.max}"
-                        entry.scores.critic?.let {
-                            Column { Text("Critics ${scoreText(it)}", style = MaterialTheme.typography.bodySmall)
-                                it.count?.let { count -> Text("$count ${it.countLabel ?: "reviews"}", style = MaterialTheme.typography.labelSmall) }
-                            }
-                        }
-                        entry.scores.user?.let {
-                            Column { Text("Users ${scoreText(it)}", style = MaterialTheme.typography.bodySmall)
-                                it.count?.let { count -> Text("$count ${it.countLabel ?: "ratings"}", style = MaterialTheme.typography.labelSmall) }
-                            }
-                        }
-                        if (entry.scores.critic == null && entry.scores.user == null) Text("No score available", style = MaterialTheme.typography.bodySmall)
-                        TextButton(onClick = { find(entry) }) { Text("Find album") }
-                        TextButton(onClick = { openLink(entry.url) }) { Text("Read review") }
-                    }
-                }
-            }
-        }
-    }
+    EditorialShelfContent(
+        source = source, feed = feed, limit = limit, enabled = enabled,
+        loading = loading, error = error,
+        onLimit = { count -> limit = count; settings.setEditorialLimit(source.id, count, owner) },
+        onReload = { reload++ }, onSource = { openLink(feed?.source?.url ?: source.url) },
+        onFind = { find(it) }, onReview = { openLink(it.url) },
+    )
     searchTitle?.let { title ->
         fun dismiss() { searchGeneration++; searchTitle = null }
         AlertDialog(onDismissRequest = { dismiss() }, title = { Text(title) },
