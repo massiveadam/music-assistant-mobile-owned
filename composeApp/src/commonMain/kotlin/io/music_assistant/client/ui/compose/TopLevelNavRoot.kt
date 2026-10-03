@@ -46,6 +46,16 @@ fun TopLevelNavRoot(modifier: Modifier = Modifier) {
     val authManager: AuthenticationManager = koinInject()
     val sessionState by serviceClient.sessionState.collectAsStateWithLifecycle()
 
+    var navigationOwner by remember { mutableStateOf<String?>(null) }
+    val connectedIdentity = (sessionState as? io.music_assistant.client.utils.HasConnectionData)?.let { data ->
+        data.user?.userId?.let { user -> data.serverInfo?.serverId?.let { "$it:$user" } }
+    }
+    LaunchedEffect(connectedIdentity, sessionState) {
+        if (connectedIdentity != null) navigationOwner = connectedIdentity
+        else if (sessionState == SessionState.Disconnected.ByUser ||
+            (sessionState as? SessionState.Connected)?.authProcessState == AuthProcessState.LoggedOut) navigationOwner = null
+    }
+
     // Cold-launch splash overlay during silent auto-login. Once dismissed (auth resolved
     // or connection error), it never reappears within this composable's lifetime —
     // user-initiated reconnects and background→foreground transitions don't bring it back.
@@ -187,9 +197,9 @@ fun TopLevelNavRoot(modifier: Modifier = Modifier) {
             predictivePopTransitionSpec = { EnterTransition.None togetherWith ExitTransition.None },
             entryProvider = entryProvider {
                 entry<Nav.Main> {
-                    MainNavigationRoot(
-                        goToSettings = { backStack.add(Nav.Settings) },
-                    )
+                    androidx.compose.runtime.key(navigationOwner) {
+                        MainNavigationRoot(goToSettings = { backStack.add(Nav.Settings) })
+                    }
                 }
 
                 entry<Nav.Settings> {

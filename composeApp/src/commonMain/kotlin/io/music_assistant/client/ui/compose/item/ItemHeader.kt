@@ -237,6 +237,7 @@ private fun ItemOverflow(
 
     val canonical = resolveDetailOverflowActions(
         item = item,
+        personalSaved = io.music_assistant.client.ui.compose.personal.personalFavorite(item),
         librarySupported = libraryActions != null && item !is Genre,
         canAddToPlaylist = playlistActions != null,
     ).map { action ->

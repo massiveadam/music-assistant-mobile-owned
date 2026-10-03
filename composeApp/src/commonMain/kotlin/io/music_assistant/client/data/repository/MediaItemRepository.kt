@@ -42,6 +42,7 @@ import kotlinx.coroutines.withContext
 class MediaItemRepository(
     private val apiClient: ServiceClient,
     private val factory: MediaItemFactory,
+    private val personalMusic: PersonalMusicRepository? = null,
 ) {
     // Singleton-scoped app-lifetime job; only used to keep [itemChanges]
     // hot. Survives subscriber turnover so quick navigation between screens
@@ -58,6 +59,12 @@ class MediaItemRepository(
         val all: List<Album>,
         val unavailableSources: List<String>,
     )
+
+    val personalState get() = personalMusic?.state
+    fun personalItems(type: io.music_assistant.client.data.model.client.MediaType): List<AppMediaItem> =
+        personalMusic?.state?.value?.saves?.entries.orEmpty()
+            .filter { it.item.mediaType == type.serverValue }
+            .mapNotNull { factory.create(it.item.asServer()) }
 
     suspend fun fetchAlbumGroups(itemId: String, provider: String): Result<AlbumGroups> =
         apiClient.sendRequest(Request.Artist.getAlbumGroups(itemId, provider)).mapCatching { answer ->
@@ -95,7 +102,9 @@ class MediaItemRepository(
     suspend fun fetchRecommendationRows(): Result<List<RecommendationFolder>> =
         withContext(Dispatchers.IO) {
             fetchMediaItems(Request.Library.recommendations())
-                .map { items -> items.filterIsInstance<RecommendationFolder>() }
+                .map { items -> items.filterIsInstance<RecommendationFolder>().filterNot {
+                    (it.provider in listOf("library", "recommendations") && it.itemId == "listen_later_unplayed") || (it.provider.startsWith("listen_later") && it.itemId == "album_collection")
+                }.map { if (it.provider in listOf("library", "recommendations") && it.itemId == "listen_later_starred") it.copy(name = "Saved albums") else it } }
         }
 
     /**

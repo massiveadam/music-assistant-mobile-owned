@@ -761,7 +761,7 @@ fun FullPlayerItem(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (currentTrack?.canBeFavorited == true) {
-                val isFavorite = currentTrack.favorite == true
+                val isFavorite = io.music_assistant.client.ui.compose.personal.personalFavorite(currentTrack)
                 IconButton(
                     modifier = Modifier.size(favoriteSlot),
                     onClick = { onFavoriteClick(currentTrack) },

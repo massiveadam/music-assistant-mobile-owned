@@ -4,6 +4,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.ComposeTestRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import io.music_assistant.client.support.get
 import musicassistantclient.composeapp.generated.resources.Res
 import musicassistantclient.composeapp.generated.resources.settings_connect
@@ -33,10 +34,12 @@ class ConnectPage(private val composeTestRule: ComposeTestRule, private val save
     private fun clickConnect() {
         if (savedCredentials) {
             composeTestRule.onNodeWithText(Res.string.settings_connect_saved.get())
+                .performScrollTo()
                 .assertIsDisplayed()
                 .performClick()
         } else {
             composeTestRule.onNodeWithText(Res.string.settings_connect.get())
+                .performScrollTo()
                 .assertIsDisplayed()
                 .performClick()
         }

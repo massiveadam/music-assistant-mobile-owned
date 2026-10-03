@@ -222,6 +222,7 @@ private fun <T> PlayableItemWithMenu(
         if (expandedItemId == item.itemId) {
             val actions = resolveLongClickActions(
                 item = item,
+                personalSaved = io.music_assistant.client.ui.compose.personal.personalFavorite(item),
                 clickContext = clickActionConfig.context,
                 librarySupported = true,
                 canAddToPlaylist = playlistActions != null && item.supportsAddToPlaylist,

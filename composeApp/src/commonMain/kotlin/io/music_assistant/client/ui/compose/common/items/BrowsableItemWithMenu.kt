@@ -283,6 +283,7 @@ private fun <T : AppMediaItem> BrowsableItemWithMenu(
     var expandedItemId by remember { mutableStateOf<String?>(null) }
     var showPlaylistDialog by rememberSaveable { mutableStateOf(false) }
     var showRemoveConfirmation by remember { mutableStateOf(false) }
+    var showCollectionChooser by rememberSaveable { mutableStateOf(false) }
 
     Box(modifier = modifier) {
         // Browsable items stay navigable even when non-playable; dim + drop playback actions.
@@ -296,6 +297,7 @@ private fun <T : AppMediaItem> BrowsableItemWithMenu(
         if (expandedItemId == item.itemId) {
             val actions = resolveLongClickActions(
                 item = item,
+                personalSaved = io.music_assistant.client.ui.compose.personal.personalFavorite(item),
                 clickContext = clickContext,
                 librarySupported = item !is Genre,
                 canAddToPlaylist = playlistActions != null && item.supportsAddToPlaylist,
@@ -330,10 +332,18 @@ private fun <T : AppMediaItem> BrowsableItemWithMenu(
                         else -> Unit
                     }
                 }
+                if (item is Album) {
+                    androidx.compose.material3.DropdownMenuItem(text = { androidx.compose.material3.Text("Album collections / Listen Later") }, onClick = {
+                        expandedItemId = null; showCollectionChooser = true
+                    })
+                }
                 navOptions.forEach { it.MenuItem(onClose = { expandedItemId = null }) }
             }
         }
 
+        if (showCollectionChooser && item is Album) {
+            io.music_assistant.client.ui.compose.personal.AlbumCollectionChooser(item) { showCollectionChooser = false }
+        }
         if (showPlaylistDialog && playlistActions != null) {
             AddToPlaylistDialog(
                 item = item,

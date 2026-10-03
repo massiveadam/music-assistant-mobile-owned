@@ -61,6 +61,7 @@ class HomeScreenViewModel(
 ) : ViewModel() {
     private val jobs = mutableListOf<Job>()
     private var loadDataJob: Job? = null
+    private var homeOwner: String? = null
 
     private val _links = MutableSharedFlow<String>()
     val links = _links.asSharedFlow()
@@ -129,6 +130,15 @@ class HomeScreenViewModel(
         viewModelScope.launch {
             apiClient.sessionState.collect { connection ->
                 _connectionState.value = connection
+                val owner = (connection as? HasConnectionData)?.let {
+                    it.user?.userId?.let { userId -> it.serverInfo?.serverId?.let { serverId -> "$serverId:$userId" } }
+                }
+                if (owner != homeOwner) {
+                    homeOwner = owner
+                    settings.setHomeRowsOwner(owner)
+                    loadDataJob?.cancel()
+                    _state.value = State(DataState.Loading(), DataState.Loading(), settings.homeRowsConfig.value)
+                }
                 when (connection) {
                     is SessionState.Reconnecting -> {
                         // Preserve UI state during reconnection - don't stop jobs or reload data

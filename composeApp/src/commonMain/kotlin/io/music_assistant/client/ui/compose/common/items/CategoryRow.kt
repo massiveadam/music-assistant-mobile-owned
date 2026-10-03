@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -42,6 +43,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.music_assistant.client.data.model.client.items.Album
+import io.music_assistant.client.data.model.client.discoveryId
 import io.music_assistant.client.data.model.client.items.AppMediaItem
 import io.music_assistant.client.data.model.client.items.Artist
 import io.music_assistant.client.data.model.client.items.Audiobook
@@ -195,6 +197,7 @@ fun CategoryRow(
     progressActions: ProgressActions? = null,
     providerIconFetcher: (@Composable (Modifier, String) -> Unit),
     rowTag: String? = null,
+    itemLabels: Map<String, String> = emptyMap(),
 ) {
     val modifier = if (rowTag != null) {
         Modifier.testTag(rowTag)
@@ -231,6 +234,11 @@ fun CategoryRow(
                 }
             },
         ) { _, item ->
+            Column {
+            itemLabels[item.discoveryId()]?.let { label ->
+                Text(label, maxLines = 2, style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.widthIn(max = 176.dp).padding(bottom = 6.dp))
+            }
             when (item) {
                 is Artist -> ArtistWithMenu(
                     item = item,
@@ -314,6 +322,7 @@ fun CategoryRow(
                 )
 
                 else -> {}
+            }
             }
         }
     }

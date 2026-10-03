@@ -38,3 +38,4 @@
 ---
 
 > **Maintenance**: Update this file when adding/removing libraries.
+Native personal music transport tests use ktor-client-mock and kotlinx-coroutines-test, with the existing dependency versions. No new runtime library is required.

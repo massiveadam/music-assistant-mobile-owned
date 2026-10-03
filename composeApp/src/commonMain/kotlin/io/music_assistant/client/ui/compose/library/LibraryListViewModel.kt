@@ -10,6 +10,8 @@ import io.music_assistant.client.data.model.client.LibraryFilters
 import io.music_assistant.client.data.model.client.MediaType
 import io.music_assistant.client.data.model.client.QueueOption
 import io.music_assistant.client.data.model.client.SortConfig
+import io.music_assistant.client.data.model.client.clientSorted
+import io.music_assistant.client.data.model.client.items.Album
 import io.music_assistant.client.data.model.client.SortOption
 import io.music_assistant.client.data.model.client.items.AppMediaItem
 import io.music_assistant.client.data.model.client.items.Genre
@@ -68,6 +70,9 @@ class LibraryListViewModel(
     private var optionsRequested = false
 
     init {
+        mediaItemRepository.personalState?.let { personal ->
+            viewModelScope.launch { personal.collect { if (_state.value.filters.favorite) loadFirstPage() } }
+        }
         viewModelScope.launch {
             searchTrigger
                 .debounce { Timings.INPUT_DEBOUNCE }
@@ -225,6 +230,7 @@ class LibraryListViewModel(
 
     fun loadMore() {
         val currentState = _state.value
+        if (currentState.filters.favorite) return
 
         // Don't load if already loading, no more data, or not in Data state
         if (currentState.isLoadingMore || !currentState.hasMore || currentState.dataState !is DataState.Data) {
@@ -407,6 +413,17 @@ class LibraryListViewModel(
 
     private fun loadFirstPage() {
         viewModelScope.launch {
+            if (state.value.filters.favorite && mediaItemRepository.personalState != null) {
+                val captured = state.value
+                val items = mediaItemRepository.personalItems(mediaType).filter { item ->
+                    item.displayName.contains(captured.searchQuery.trim(), true) &&
+                        (captured.filters.providers.isEmpty() || item.provider in captured.filters.providers ||
+                            item.providerMappings.orEmpty().any { it.providerInstance in captured.filters.providers }) &&
+                        (captured.filters.albumTypes.isEmpty() || (item as? Album)?.albumType in captured.filters.albumTypes)
+                }.clientSorted(captured.sortOption)
+                updateStateWithData(items, offset = items.size, hasMore = false)
+                return@launch
+            }
             val searchQuery = state.value.searchQuery.takeIf { it.length >= 0 }
             val orderBy = state.value.sortOption.toServerString()
             updateState(DataState.Loading())

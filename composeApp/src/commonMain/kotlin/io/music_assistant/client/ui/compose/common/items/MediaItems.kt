@@ -688,7 +688,7 @@ fun BoxScope.Badges(
 ) {
     val modifier = Modifier.padding(badgePadding).size(badgeSize)
     val bottomEnd = modifier.align(Alignment.BottomEnd)
-    if (item.favorite == true) {
+    if (io.music_assistant.client.ui.compose.personal.personalFavorite(item)) {
         Icon(
             modifier = bottomEnd,
             imageVector = Icons.Filled.Favorite,
@@ -1213,6 +1213,7 @@ internal fun MediaItemLabels(
     Text(
         modifier = Modifier.fillMaxWidth(),
         text = title,
+        color = MaterialTheme.colorScheme.onSurface,
         style = MaterialTheme.typography.bodyMedium,
         fontWeight = MEDIA_TITLE_WEIGHT,
         textAlign = textAlign,

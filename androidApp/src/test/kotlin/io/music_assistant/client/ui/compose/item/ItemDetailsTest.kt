@@ -15,6 +15,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import io.music_assistant.client.data.repository.MediaItemRepository
 import io.music_assistant.client.data.model.client.AppMediaItemFixtures
 import io.music_assistant.client.data.model.client.QueueOption
 import io.music_assistant.client.support.get
@@ -68,7 +69,7 @@ class ItemDetailsTest {
                     itemState = DataState.Data(artist),
                     albumsState = DataState.NoData(),
                     playableItemsState = DataState.NoData(),
-                    artistSections = ArtistSections(albums = DataState.Data(Section(albums))),
+                    artistSections = ArtistSections(discography = DataState.Data(MediaItemRepository.AlbumGroups(emptyList(), albums, emptyList()))),
                 ),
                 geEditablePlaylists = suspend { emptyList() },
                 fetchColors = NoColors,
@@ -102,8 +103,6 @@ class ItemDetailsTest {
         val artist = AppMediaItemFixtures.artist()
         val owned = AppMediaItemFixtures.album(artist = artist).copy(name = "Local purchase")
         val streaming = AppMediaItemFixtures.album(artist = artist).copy(name = "Streaming exclusive")
-        val allList = ItemList.ArtistAlbumGroup(artist.provider, artist.itemId, owned = false, groupType = "album")
-        var navigatedTo: Pair<String, ItemList>? = null
         composeTestRule.setInspectableContent {
             ItemDetails(
                 state = ItemDetailsViewModel.State(
@@ -111,12 +110,11 @@ class ItemDetailsTest {
                     albumsState = DataState.NoData(),
                     playableItemsState = DataState.NoData(),
                     artistSections = ArtistSections(
-                        albums = DataState.Data(Section(listOf(owned, streaming), itemList = allList)),
+                        discography = DataState.Data(MediaItemRepository.AlbumGroups(listOf(owned), listOf(owned, streaming), emptyList())),
                     ),
                 ),
                 geEditablePlaylists = suspend { emptyList() },
                 fetchColors = NoColors,
-                onNavigateToList = { title, list, _ -> navigatedTo = title to list },
             )
         }
         composeTestRule.inScrollable("LazyVerticalGrid") {
@@ -126,8 +124,8 @@ class ItemDetailsTest {
             onNode(
                 hasContentDescription(Res.string.cd_album_item.get(streaming.displayName, streaming.provider)),
             ).assertIsDisplayed()
-            onNode(hasContentDescription(Res.string.cd_view_all.get("Albums"))).performClick()
-            assertEquals("Albums" to allList, navigatedTo)
+            onNode(hasText("Owned albums")).assertIsDisplayed()
+            onNode(hasText("Other")).assertIsDisplayed()
         }
     }
 

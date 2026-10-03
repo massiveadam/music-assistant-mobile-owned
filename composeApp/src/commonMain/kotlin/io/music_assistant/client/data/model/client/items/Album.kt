@@ -21,6 +21,7 @@ data class Album(
     val year: Int?,
     val artists: List<Artist>,
     val albumType: AlbumType? = null,
+    val externalIds: List<List<String>> = emptyList(),
 ) : AppMediaItem() {
     override val mediaType: MediaType = MediaType.ALBUM
     override val canStartEndlessMix: Boolean = true

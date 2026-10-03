@@ -117,6 +117,7 @@ class MainDataSource(
     private val mediaItemFactory: MediaItemFactory,
     private val playerFactory: PlayerFactory,
     private val queueFactory: QueueFactory,
+    private val personalMusic: io.music_assistant.client.data.repository.PersonalMusicRepository? = null,
 ) : CoroutineScope {
     private val log = Logger.withTag("MainDataSource")
 
@@ -357,6 +358,15 @@ class MainDataSource(
     private var updateJob: Job? = null
 
     init {
+        personalMusic?.let { repository ->
+            launch {
+                repository.state.collect {
+                    _favoriteOverrides.value = _queueInfos.value.mapNotNull { queue ->
+                        (queue.currentItem?.track as? AppMediaItem)?.let { favKey(it) to repository.isSaved(it) }
+                    }.toMap()
+                }
+            }
+        }
         mediaPlayerController.setLongFormSeekIntervals(
             LongFormSeekDefaults.BACK_SECONDS,
             LongFormSeekDefaults.FORWARD_SECONDS,
@@ -896,18 +906,8 @@ class MainDataSource(
      */
     fun toggleFavorite(item: AppMediaItem) {
         launch {
-            val newFavorite = item.favorite != true
-            val result = if (newFavorite) {
-                val uri = item.uri ?: return@launch
-                setFavoriteOverride(item, true)
-                apiClient.sendRequest(Request.Library.addFavorite(uri))
-            } else {
-                setFavoriteOverride(item, false)
-                apiClient.sendRequest(
-                    Request.Library.removeFavorite(item.itemId, item.mediaType),
-                )
-            }
-            result.onFailure { setFavoriteOverride(item, item.favorite) }
+            val repository = personalMusic ?: return@launch
+            repository.setSaved(item, !repository.isSaved(item))
         }
     }
 
@@ -920,7 +920,7 @@ class MainDataSource(
         val currentItem = queueData.data.info.currentItem ?: return playerData
         val track = currentItem.track
         val item = track as? AppMediaItem ?: return playerData
-        val override = overrides[favKey(item)] ?: return playerData
+        val override = personalMusic?.isSaved(item) ?: overrides[favKey(item)] ?: return playerData
         if (track.favorite == override) return playerData
         return playerData.copy(
             queue = DataState.Data(
@@ -1428,7 +1428,7 @@ class MainDataSource(
                                 ?.let {
                                     // Reliable server truth — reconcile the optimistic
                                     // overlay so it survives the stale queue payload.
-                                    it.favorite?.let { fav -> setFavoriteOverride(it, fav) }
+                                    personalMusic?.let { repository -> setFavoriteOverride(it, repository.isSaved(it)) }
                                     updateMediaTrackInfo(it)
                                 }
                         }

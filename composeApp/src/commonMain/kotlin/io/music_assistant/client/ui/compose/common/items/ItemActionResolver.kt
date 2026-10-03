@@ -7,6 +7,7 @@ import io.music_assistant.client.data.model.client.items.AppMediaItem
 import io.music_assistant.client.data.model.client.items.Audiobook
 import io.music_assistant.client.data.model.client.items.PodcastEpisode
 import io.music_assistant.client.data.model.client.items.RadioStation
+import io.music_assistant.client.data.model.client.items.canBeFavorited
 import io.music_assistant.client.data.model.client.items.Track
 
 /** Item types accepted by playlist edits (server contract, not a UI choice). */
@@ -27,13 +28,14 @@ fun resolveLongClickActions(
     progressSupported: Boolean,
     defaultAction: ItemAction? = null,
     customizationAllowed: Boolean = false,
+    personalSaved: Boolean = item.favorite == true,
 ): List<ItemAction> = buildList {
     if (item.isPlayable) addPlaybackActions(item, clickContext)
     if (customizationAllowed) add(ItemAction.Customize)
     if (librarySupported) {
         add(if (item.isInLibrary) ItemAction.RemoveFromLibrary else ItemAction.AddToLibrary)
-        if (item.isInLibrary) {
-            add(if (item.favorite == true) ItemAction.Unfavorite else ItemAction.Favorite)
+        if (item.canBeFavorited) {
+            add(if (personalSaved) ItemAction.Unfavorite else ItemAction.Favorite)
         }
     }
     if (canAddToPlaylist) add(ItemAction.AddToPlaylist)
@@ -91,11 +93,12 @@ fun resolveDetailOverflowActions(
     item: AppMediaItem,
     librarySupported: Boolean,
     canAddToPlaylist: Boolean,
+    personalSaved: Boolean = item.favorite == true,
 ): List<ItemAction> = buildList {
     if (librarySupported) {
         add(if (item.isInLibrary) ItemAction.RemoveFromLibrary else ItemAction.AddToLibrary)
-        if (item.isInLibrary) {
-            add(if (item.favorite == true) ItemAction.Unfavorite else ItemAction.Favorite)
+        if (item.canBeFavorited) {
+            add(if (personalSaved) ItemAction.Unfavorite else ItemAction.Favorite)
         }
     }
     if (canAddToPlaylist) add(ItemAction.AddToPlaylist)

@@ -354,6 +354,7 @@ private fun ItemContent(
     )
 
     val heroSlot: @Composable () -> Unit = {
+        Column(Modifier.fillMaxWidth()) {
         ProvideClickActions(ClickContext.DETAIL) {
             ItemHeader(
                 item = item,
@@ -361,6 +362,16 @@ private fun ItemContent(
                 providerIconFetcher = providerIconFetcher,
                 onPlayClick = onPlayItemClick,
             )
+        }
+        if (item is Album && !LocalInspectionMode.current) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+            io.music_assistant.client.ui.compose.personal.AlbumCollectionControls(item)
+            io.music_assistant.client.ui.compose.personal.AlbumCreditsPanel(item, onNavigateToAlbum = { itemId, provider ->
+                onNavigateClick(Album(itemId, provider, "Album", null, null, null, uri = null,
+                    images = emptyMap(), version = null, year = null, artists = emptyList()))
+            })
+            }
+        }
         }
     }
 
@@ -918,6 +929,18 @@ private fun ArtistContent(
                 item { Text("Some sources could not be loaded. Showing albums from the other sources.") }
             }
 
+            item {
+                when (val groups = sections.discography) {
+                    is DataState.Data -> androidx.compose.runtime.key(artist.uri ?: artist.itemId) {
+                        ArtistDiscography(groups.data.owned, groups.data.all, onNavigateClick,
+                            onPlayChildClick, playlistActions, libraryActions, providerIconFetcher)
+                    }
+                    is DataState.Loading -> CenteredProgress()
+                    is DataState.Error -> Text("Could not load discography. Try opening the artist again.", Modifier.padding(16.dp))
+                    else -> Unit
+                }
+            }
+
             // Top Tracks (Vertical list like Tidal)
             val topTracksState = sections.topTracks
             if (topTracksState is DataState.Data && topTracksState.data.items.isNotEmpty()) {
@@ -970,54 +993,7 @@ private fun ArtistContent(
                 }
             }
 
-            // Albums (Unified owned + streaming, chronologically sorted newest first)
-            item {
-                SectionRow(
-                    artist = artist,
-                    sectionData = sections.albums,
-                    id = "albums",
-                    title = "Albums".toDisplayString(),
-                    onNavigateClick = onNavigateClick,
-                    onNavigateToList = onNavigateToList,
-                    onFilterSelected = onAlbumMappingChanged,
-                    onPlayChildClick = onPlayChildClick,
-                    playlistActions = playlistActions,
-                    libraryActions = libraryActions,
-                    providerIconFetcher = providerIconFetcher,
-                )
-            }
 
-            // EPs (Unified owned + streaming, chronologically sorted newest first)
-            item {
-                SectionRow(
-                    artist = artist,
-                    sectionData = sections.eps,
-                    id = "eps",
-                    title = "EPs".toDisplayString(),
-                    onNavigateClick = onNavigateClick,
-                    onNavigateToList = onNavigateToList,
-                    onPlayChildClick = onPlayChildClick,
-                    playlistActions = playlistActions,
-                    libraryActions = libraryActions,
-                    providerIconFetcher = providerIconFetcher,
-                )
-            }
-
-            // Singles (Unified owned + streaming, chronologically sorted newest first)
-            item {
-                SectionRow(
-                    artist = artist,
-                    sectionData = sections.singles,
-                    id = "singles",
-                    title = "Singles".toDisplayString(),
-                    onNavigateClick = onNavigateClick,
-                    onNavigateToList = onNavigateToList,
-                    onPlayChildClick = onPlayChildClick,
-                    playlistActions = playlistActions,
-                    libraryActions = libraryActions,
-                    providerIconFetcher = providerIconFetcher,
-                )
-            }
         }
     }
 }

@@ -103,10 +103,13 @@ fun sharedModule(
         single { UserPreferences() }        // Server-synced `auth/me` preferences
         singleOf(::PlayerRequestFactory)    // Pure PlayerAction → Request mapper
         singleOf(::LocalPlayerController)    // Local player: lifecycle + state + commands
-        singleOf(::MediaItemFactory)        // Stateless DTO → domain mapper
+        single { io.music_assistant.client.api.PersonalApi(get()) }
+        single { io.music_assistant.client.data.repository.PersonalMusicRepository(get(), errorBus = get()) }
+        single { MediaItemFactory(get(), get()) } // private saves overlay
+        // singleOf(::MediaItemFactory)        // Stateless DTO → domain mapper
         singleOf(::PlayerFactory)           // Stateless DTO → domain mapper
         singleOf(::QueueFactory)            // Stateless DTO → domain mapper (depends on MediaItemFactory)
-        singleOf(::MediaItemRepository)     // Server DTO/event → client model boundary for UI
+        single { MediaItemRepository(get(), get(), get()) }     // Server DTO/event → client model boundary for UI
         singleOf(::AiRadioRepository)       // Optional ai_radio plugin: list and run stations
         singleOf(::MainDataSource)          // Singleton - held by foreground service
         single(createdAtStart = true) {     // Eager - must observe car edges from launch

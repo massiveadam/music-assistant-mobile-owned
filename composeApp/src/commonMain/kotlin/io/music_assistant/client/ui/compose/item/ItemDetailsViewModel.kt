@@ -246,83 +246,17 @@ class ItemDetailsViewModel(
 
     private fun loadArtistAlbumSections(artist: Artist) {
         viewModelScope.launch {
-            val result = mediaItemRepository.fetchAlbumGroups(artist.itemId, artist.provider)
-            _state.update { state ->
-                val groups = result.getOrNull()
-                val (mergedAlbums, mergedEps, mergedSingles) = if (groups != null) {
-                    val seen = mutableSetOf<String>()
-                    val list = mutableListOf<Album>()
-                    // 1. First add owned albums (local files, bandcamp) so they take precedence
-                    for (item in groups.owned) {
-                        val key = item.name.trim().lowercase() + "|" + (item.year ?: "")
-                        seen.add(key)
-                        list.add(item)
-                    }
-                    // 2. Add streaming/catalog albums, deduping against owned copies
-                    for (item in groups.all) {
-                        val key = item.name.trim().lowercase() + "|" + (item.year ?: "")
-                        if (key !in seen) {
-                            seen.add(key)
-                            list.add(item)
-                        }
-                    }
-                    // 3. Sort chronologically descending: newest release first!
-                    val sorted = list.sortedWith(
-                        compareByDescending<Album> { it.isOwnedItem }.thenByDescending { it.year ?: 0 }.thenBy { it.displayName },
-                    )
-                    Triple(
-                        sorted.filter {
-                            it.albumType != AlbumType.EP && it.albumType != AlbumType.SINGLE
-                        },
-                        sorted.filter { it.albumType == AlbumType.EP },
-                        sorted.filter { it.albumType == AlbumType.SINGLE },
-                    )
-                } else {
-                    Triple(null, null, null)
-                }
-
-                val albumsSection = mergedAlbums?.let {
-                    DataState.Data(
-                        Section(
-                        items = it.take(ARTIST_SECTION_LIMIT),
-                        itemList = ItemList.ArtistAlbumGroup(artist.provider, artist.itemId, owned = false, groupType = "album"),
-                    ),
-                    )
-                } ?: DataState.Error()
-
-                val epsSection = mergedEps?.let {
-                    DataState.Data(
-                        Section(
-                        items = it.take(ARTIST_SECTION_LIMIT),
-                        itemList = ItemList.ArtistAlbumGroup(artist.provider, artist.itemId, owned = false, groupType = "ep"),
-                    ),
-                    )
-                } ?: DataState.Error()
-
-                val singlesSection = mergedSingles?.let {
-                    DataState.Data(
-                        Section(
-                        items = it.take(ARTIST_SECTION_LIMIT),
-                        itemList = ItemList.ArtistAlbumGroup(artist.provider, artist.itemId, owned = false, groupType = "single"),
-                    ),
-                    )
-                } ?: DataState.Error()
-
-                state.copy(
-                    artistSections = state.artistSections.copy(
-                    albums = albumsSection,
-                    eps = epsSection,
-                    singles = singlesSection,
-                    library = albumsSection,
-                    libraryEps = epsSection,
-                    librarySingles = singlesSection,
-                    all = albumsSection,
-                    allEps = epsSection,
-                    allSingles = singlesSection,
-                    incompleteAlbums = groups?.unavailableSources?.isNotEmpty() == true,
-                ),
-                )
-            }
+            val groups = mediaItemRepository.fetchAlbumGroups(artist.itemId, artist.provider).getOrNull()
+            fun section(items: List<Album>?): DataState<Section<Album>> =
+                items?.let { DataState.Data(Section(it)) } ?: DataState.Error()
+            _state.update { current -> current.copy(artistSections = current.artistSections.copy(
+                discography = groups?.let { DataState.Data(it) } ?: DataState.Error(),
+                library = section(groups?.owned),
+                albums = section(groups?.all), all = section(groups?.all),
+                eps = section(groups?.all?.filter { it.albumType == AlbumType.EP }),
+                singles = section(groups?.all?.filter { it.albumType == AlbumType.SINGLE }),
+                incompleteAlbums = groups?.unavailableSources?.isNotEmpty() == true,
+            )) }
         }
 
         viewModelScope.launch {
@@ -796,6 +730,7 @@ private fun DataState<out List<*>>.hasItems(): Boolean = when (this) {
 }
 
 data class ArtistSections(
+    val discography: DataState<MediaItemRepository.AlbumGroups> = DataState.Loading(),
     val library: DataState<Section<Album>> = DataState.Loading(),
     val libraryEps: DataState<Section<Album>> = DataState.Loading(),
     val librarySingles: DataState<Section<Album>> = DataState.Loading(),
@@ -824,6 +759,7 @@ data class ArtistSections(
             )
 
         fun error() = ArtistSections(
+            discography = DataState.Error(),
             albums = DataState.Error(),
             eps = DataState.Error(),
             singles = DataState.Error(),

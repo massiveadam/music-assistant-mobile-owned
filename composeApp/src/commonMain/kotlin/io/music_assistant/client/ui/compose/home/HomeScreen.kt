@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class, kotlin.time.ExperimentalTime::class)
 @file:Suppress("MagicNumber")
 
 package io.music_assistant.client.ui.compose.home
@@ -45,6 +45,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import compose.icons.TablerIcons
 import compose.icons.tablericons.GripVertical
 import io.music_assistant.client.data.model.client.ClickContext
+import io.music_assistant.client.data.model.client.DiscoverySource
+import io.music_assistant.client.data.model.client.discoveryId
+import io.music_assistant.client.data.model.client.selectDiscoveryMix
 import io.music_assistant.client.data.model.client.Shortcut
 import io.music_assistant.client.data.model.client.items.Album
 import io.music_assistant.client.data.model.client.items.AppMediaItem
@@ -92,15 +95,60 @@ fun HomeScreen(
     providerIconFetcher: (@Composable (Modifier, String) -> Unit),
     actionsViewModel: ActionsViewModel,
     state: HomeScreenState,
+    onMyMusic: () -> Unit = {},
+    onCollections: () -> Unit = {},
 ) {
     val homeScreenState by homeScreenViewModel.state.collectAsStateWithLifecycle()
+    var editorialRefresh by remember { mutableStateOf(0) }
+    val editorial = rememberEditorialHome(editorialRefresh)
+    val editorialRows = remember(editorial.sources) {
+        editorial.sources.map { source -> HomeRow(ItemCategory(id = source.rowId,
+            title = source.name.toDisplayString(), items = emptyList(), lazyListKey = source.rowId), loading = false) }
+    }
+    val personalRepository = org.koin.compose.koinInject<io.music_assistant.client.data.repository.PersonalMusicRepository>()
+    val mediaFactory = org.koin.compose.koinInject<io.music_assistant.client.data.factory.MediaItemFactory>()
+    val personalState by personalRepository.state.collectAsStateWithLifecycle()
+    val connection by homeScreenViewModel.connectionState.collectAsStateWithLifecycle()
+    val person = (connection as? io.music_assistant.client.utils.HasConnectionData)?.user
+    val homeTitle = (person?.displayName ?: person?.username)?.let { "$it's music" } ?: "Your music"
+    val personalRows = remember(personalState.saves, personalState.albums, personalState.userId) {
+        listOf(
+            HomeRow(ItemCategory(id = "personal_music", title = "Saved by you".toDisplayString(),
+                items = personalState.saves?.entries.orEmpty().sortedByDescending { it.savedAt }.take(12).mapNotNull { mediaFactory.create(it.item.asServer()) },
+                lazyListKey = "personal_music"), loading = personalState.saves == null && personalState.loading),
+            HomeRow(ItemCategory(id = "personal_listen_later", title = "Listen Later".toDisplayString(),
+                items = personalState.albums?.collections?.firstOrNull { it.id == "listen-later" }?.entries.orEmpty()
+                    .filter { it.status == io.music_assistant.client.data.model.server.CollectionStatus.PENDING }.sortedByDescending { it.addedAt }.take(12)
+                    .mapNotNull { mediaFactory.create(it.item.asServer()) }, lazyListKey = "personal_listen_later"),
+                loading = personalState.albums == null && personalState.loading),
+        )
+    }
 
     // Reconciled, enabled-first ordering. Authoritative for normal-mode display.
     val recommendationsState = homeScreenState.recommendations
     val shortcutsState = homeScreenState.shortcuts
     val homeRowsConfig = homeScreenState.homeRowsConfig
-    val working = remember(recommendationsState, shortcutsState, homeRowsConfig) {
-        getCategories(recommendationsState, shortcutsState, homeRowsConfig)
+    val day = kotlin.time.Clock.System.now().toString().take(10)
+    var mixRotation by remember(editorial.session, day) { mutableStateOf(0) }
+    var previousMix by remember(editorial.session, day) { mutableStateOf(emptySet<String>()) }
+    val mix = remember(personalState.saves, recommendationsState, homeRowsConfig, editorial.session, day, mixRotation, previousMix) {
+        val hidden = homeRowsConfig.filterNot { it.enabled }.mapTo(mutableSetOf()) { it.id }
+        val rows = (recommendationsState as? DataState.Data)?.data.orEmpty()
+        val sources = listOf(DiscoverySource("personal_music", "Saved by you",
+            personalState.saves?.entries.orEmpty().mapNotNull { mediaFactory.create(it.item.asServer()) },
+            visible = "personal_music" !in hidden)) + rows.map { row ->
+                DiscoverySource(row.folder.itemId, row.folder.name, row.resolvedItems.orEmpty(),
+                    visible = row.folder.itemId !in hidden, fallback = row.folder.itemId == "recently_played")
+            }
+        val recent = rows.filter { it.folder.itemId == "recently_played" }.flatMap { it.resolvedItems.orEmpty() }.mapTo(mutableSetOf()) { it.discoveryId() }
+        selectDiscoveryMix(sources, "${editorial.session?.userId}:$day:$mixRotation", recent, previousMix)
+    }
+    val mixRows = remember(mix) {
+        if (mix.isEmpty()) emptyList() else listOf(HomeRow(ItemCategory(id = "discovery_mix",
+            title = "Discovery mix".toDisplayString(), items = mix.map { it.item }, lazyListKey = "discovery_mix"), loading = false))
+    }
+    val working = remember(recommendationsState, shortcutsState, homeRowsConfig, personalRows, editorialRows, mixRows) {
+        getCategories(recommendationsState, shortcutsState, homeRowsConfig, mixRows + personalRows + editorialRows)
     }
 
     // Edit-mode working copy — isolated from external (real-time) updates while editing;
@@ -127,7 +175,10 @@ fun HomeScreen(
         topBar = {
             LandingPageTopBar(
                 editMode = editMode,
-                onRefresh = { homeScreenViewModel.loadData() },
+                title = homeTitle,
+                onMyMusic = onMyMusic,
+                onCollections = onCollections,
+                onRefresh = { editorialRefresh++; homeScreenViewModel.loadData(); state.coroutineScope.launch { personalRepository.refresh() } },
                 onToggleEditMode = {
                     if (editMode) {
                         homeScreenViewModel.saveHomeRows(
@@ -163,7 +214,23 @@ fun HomeScreen(
                 }
             }
             val rowContent: @Composable (HomeRow) -> Unit = { row ->
-                CategoryRow(
+                val source = editorial.sources.firstOrNull { it.rowId == row.category.id }
+                if (row.category.id == "discovery_mix") {
+                    CategoryRow(title = "Discovery mix", mediaItems = row.category.items,
+                        actions = { androidx.compose.material3.TextButton(onClick = {
+                            previousMix = mix.mapTo(mutableSetOf()) { it.item.discoveryId() }; mixRotation++
+                        }) { Text("New mix") } },
+                        itemLabels = mix.associate { it.item.discoveryId() to it.tag },
+                        onNavigateClick = onNavigateClick, onPlayClick = onPlayClickLambda,
+                        playlistActions = actionsViewModel, libraryActions = actionsViewModel,
+                        progressActions = actionsViewModel, providerIconFetcher = providerIconFetcher)
+                } else if (source != null) {
+                    EditorialShelf(source, editorial.session, enabled = !editMode,
+                        refresh = editorialRefresh, onNavigate = onNavigateClick)
+                } else if (editMode && !row.loading && row.category.items.isEmpty()) {
+                    Text(row.category.title.string(), modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        color = MaterialTheme.colorScheme.onSurface)
+                } else CategoryRow(
                     data = if (row.loading) DataState.Loading() else DataState.Data(row.category),
                     itemCategoryProvider = { it },
                     onNavigateClick = onNavigateClick,
@@ -182,6 +249,16 @@ fun HomeScreen(
                     contentPadding = contentPadding,
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
+                    if (!editMode) {
+                        item {
+                            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                                androidx.compose.material3.TextButton(onClick = onMyMusic) { Text("My music") }
+                                androidx.compose.material3.TextButton(onClick = onCollections) { Text("Album collections") }
+                            }
+                            personalState.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp)) }
+                            editorial.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp)) }
+                        }
+                    }
                     items(
                         items = displayedData,
                         key = { it.category.lazyListKey },
@@ -268,6 +345,7 @@ internal fun getCategories(
     recommendationsState: DataState<List<RecommendationRowState>>,
     shortcutsState: DataState<List<Shortcut>>,
     homeRowsConfig: List<SettingsRepository.HomeRowPref>,
+    personalRows: List<HomeRow> = emptyList(),
 ): List<Pair<HomeRow, Boolean>> {
     val baseList = if (recommendationsState is DataState.Data) {
         val recommendations = recommendationsState.data
@@ -321,7 +399,7 @@ internal fun getCategories(
         emptyList()
     }
 
-    return reconcileHomeRows(baseList, homeRowsConfig, onTop = SHORTCUTS_CATEGORY_ID)
+    return reconcileHomeRows(personalRows + baseList, homeRowsConfig, onTop = SHORTCUTS_CATEGORY_ID)
 }
 
 private const val SHORTCUTS_CATEGORY_ID = "shortcuts"
@@ -331,9 +409,12 @@ private fun LandingPageTopBar(
     editMode: Boolean,
     onRefresh: () -> Unit,
     onToggleEditMode: () -> Unit,
+    title: String = "Your music",
+    onMyMusic: () -> Unit = {},
+    onCollections: () -> Unit = {},
 ) {
     TopAppBar(
-        title = { Text(stringResource(Res.string.nav_home)) },
+        title = { Text(title) },
         actions = {
             IconButton(onClick = onToggleEditMode) {
                 Icon(

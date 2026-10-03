@@ -192,31 +192,33 @@ class SettingsRepository(
     @Serializable
     data class HomeRowPref(val id: String, val enabled: Boolean)
 
+    private var homeRowsOwner: String? = null
+    private val homeRowsKey: String get() = homeRowsOwner?.let { "home_rows_config:$it" } ?: "home_rows_config:logged-out"
+    fun setHomeRowsOwner(owner: String?) {
+        if (owner == homeRowsOwner) return
+        homeRowsOwner = owner
+        _homeRowsConfig.value = loadHomeRowsConfig()
+    }
     private val _homeRowsConfig = MutableStateFlow(loadHomeRowsConfig())
     val homeRowsConfig = _homeRowsConfig.asStateFlow()
 
-    private fun loadHomeRowsConfig(): List<HomeRowPref> {
-        settings.getStringOrNull("home_rows_config")?.let { raw ->
-            return runCatching {
-                myJson.decodeFromString<List<HomeRowPref>>(raw)
-            }.getOrDefault(emptyList())
-        }
-        // Legacy migration.
-        val legacy = settings.getStringOrNull("hidden_recommendation_folders")
-            ?.split(",")
-            ?.filter { it.isNotBlank() }
-        return legacy
-            ?.map { HomeRowPref(id = it, enabled = false) }
-            ?.also {
-                settings.putString("home_rows_config", myJson.encodeToString(it))
-                settings.remove("hidden_recommendation_folders")
-            }
-            ?: emptyList()
-    }
+    private fun loadHomeRowsConfig(): List<HomeRowPref> =
+        settings.getStringOrNull(homeRowsKey)?.let { raw ->
+            runCatching { myJson.decodeFromString<List<HomeRowPref>>(raw) }.getOrDefault(emptyList())
+        } ?: emptyList()
 
     fun setHomeRowsConfig(config: List<HomeRowPref>) {
-        settings.putString("home_rows_config", myJson.encodeToString(config))
-        _homeRowsConfig.update { config }
+        if (homeRowsOwner == null) return
+        settings.putString(homeRowsKey, myJson.encodeToString(config))
+        _homeRowsConfig.value = config
+    }
+
+    fun editorialLimit(sourceId: String, owner: String?): Int =
+        settings.getInt("home_rows_config:$owner:editorial:$sourceId", 20).takeIf { it in listOf(10, 20, 25, 50) } ?: 20
+
+    fun setEditorialLimit(sourceId: String, count: Int, owner: String?) {
+        if (owner != null && count in listOf(10, 20, 25, 50))
+            settings.putInt("home_rows_config:$owner:editorial:$sourceId", count)
     }
 
     // Library tabs visibility + ordering. Stored as comma-separated "NAME:0|1"

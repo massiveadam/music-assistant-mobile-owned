@@ -36,6 +36,7 @@ private const val YEAR_LENGTH = 4
  */
 class MediaItemFactory(
     private val apiClient: ServiceClient,
+    private val personalMusic: io.music_assistant.client.data.repository.PersonalMusicRepository? = null,
 ) {
     fun create(server: ServerMediaItem): AppMediaItem? = with(server) {
         when (MediaType.fromServer(mediaType)) {
@@ -45,7 +46,7 @@ class MediaItemFactory(
                 name = name,
                 providerMappings = providerMappings,
                 metadata = createMetadata(metadata),
-                favorite = favorite,
+                favorite = personalMusic?.isSaved(server) ?: favorite,
                 sortName = sortName,
                 uri = uri,
                 images = resolveImageInfo(image, metadata),
@@ -57,7 +58,7 @@ class MediaItemFactory(
                 name = name,
                 providerMappings = providerMappings,
                 metadata = createMetadata(metadata),
-                favorite = favorite,
+                favorite = personalMusic?.isSaved(server) ?: favorite,
                 sortName = sortName,
                 uri = uri,
                 images = resolveImageInfo(image, metadata),
@@ -65,6 +66,7 @@ class MediaItemFactory(
                 year = year ?: metadata?.releaseDate?.take(YEAR_LENGTH)?.toIntOrNull(),
                 artists = artists?.mapNotNull { create(it) as? Artist } ?: emptyList(),
                 albumType = AlbumType.fromServer(albumType),
+                externalIds = externalIds,
             )
 
             MediaType.TRACK -> Track(
@@ -73,7 +75,7 @@ class MediaItemFactory(
                 name = name,
                 providerMappings = providerMappings,
                 metadata = createMetadata(metadata),
-                favorite = favorite,
+                favorite = personalMusic?.isSaved(server) ?: favorite,
                 sortName = sortName,
                 uri = uri,
                 images = resolveImageInfo(image, metadata),
@@ -94,7 +96,7 @@ class MediaItemFactory(
                 name = name,
                 providerMappings = providerMappings,
                 metadata = createMetadata(metadata),
-                favorite = favorite,
+                favorite = personalMusic?.isSaved(server) ?: favorite,
                 sortName = sortName,
                 uri = uri,
                 images = resolveImageInfo(image, metadata),
@@ -118,7 +120,7 @@ class MediaItemFactory(
                 name = name,
                 providerMappings = providerMappings,
                 metadata = createMetadata(metadata),
-                favorite = favorite,
+                favorite = personalMusic?.isSaved(server) ?: favorite,
                 sortName = sortName,
                 uri = uri,
                 images = resolveImageInfo(image, metadata),
@@ -130,7 +132,7 @@ class MediaItemFactory(
                 name = name,
                 providerMappings = providerMappings,
                 metadata = createMetadata(metadata),
-                favorite = favorite,
+                favorite = personalMusic?.isSaved(server) ?: favorite,
                 sortName = sortName,
                 uri = uri,
                 images = resolveImageInfo(image, metadata),
@@ -150,7 +152,7 @@ class MediaItemFactory(
                 name = name,
                 providerMappings = providerMappings,
                 metadata = createMetadata(metadata),
-                favorite = favorite,
+                favorite = personalMusic?.isSaved(server) ?: favorite,
                 sortName = sortName,
                 uri = uri,
                 images = resolveImageInfo(image, metadata),
@@ -176,7 +178,7 @@ class MediaItemFactory(
                 name = name,
                 providerMappings = providerMappings,
                 metadata = createMetadata(metadata),
-                favorite = favorite,
+                favorite = personalMusic?.isSaved(server) ?: favorite,
                 sortName = sortName,
                 uri = uri,
                 images = resolveImageInfo(image, metadata),
@@ -197,7 +199,7 @@ class MediaItemFactory(
                 name = name,
                 providerMappings = providerMappings,
                 metadata = createMetadata(metadata),
-                favorite = favorite,
+                favorite = personalMusic?.isSaved(server) ?: favorite,
                 sortName = sortName,
                 uri = uri,
                 images = resolveImageInfo(image, metadata),

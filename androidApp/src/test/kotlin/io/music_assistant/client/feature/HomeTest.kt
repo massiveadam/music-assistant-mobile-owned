@@ -7,7 +7,6 @@ import io.music_assistant.client.support.FakeServiceClient
 import io.music_assistant.client.support.Qualifiers
 import io.music_assistant.client.support.ServerMediaItemFixtures
 import io.music_assistant.client.support.launchLoggedInApp
-import io.music_assistant.client.support.pages.assertMediaDisplayed
 import io.music_assistant.client.support.pages.assertMediaNotDisplayed
 import io.music_assistant.client.support.rules.createTestRuleChain
 import org.junit.Rule
@@ -37,7 +36,7 @@ class HomeTest {
         serviceClient.addItems(album)
 
         launchLoggedInApp(composeTestRule, serviceClient)
-            .assertMediaDisplayed(album)
+            .assertRecommendationDisplayed(album)
     }
 
     @Test
@@ -46,13 +45,13 @@ class HomeTest {
         serviceClient.addItems(album1)
 
         val homePage = launchLoggedInApp(composeTestRule, serviceClient)
-            .assertMediaDisplayed(album1)
+            .assertRecommendationDisplayed(album1)
 
         val album2 = ServerMediaItemFixtures.album()
         serviceClient.addItems(album2)
 
         homePage.refresh()
-            .assertMediaDisplayed(album2)
+            .assertRecommendationDisplayed(album2)
     }
 
     @Test
@@ -73,7 +72,7 @@ class HomeTest {
         val album = ServerMediaItemFixtures.album()
         serviceClient.addItems(album)
         val homePage = launchLoggedInApp(composeTestRule, serviceClient)
-            .assertMediaDisplayed(album)
+            .assertRecommendationDisplayed(album)
 
         serviceClient.setRequestErrors(true)
         homePage.refresh()
@@ -82,6 +81,6 @@ class HomeTest {
 
         serviceClient.setRequestErrors(false)
         homePage.refresh()
-            .assertMediaDisplayed(album)
+            .assertRecommendationDisplayed(album)
     }
 }

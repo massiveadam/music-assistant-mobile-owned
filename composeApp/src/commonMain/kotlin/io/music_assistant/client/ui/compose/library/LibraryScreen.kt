@@ -69,6 +69,8 @@ fun LibraryScreen(
     contentPadding: PaddingValues,
     state: LibraryScreenState,
     onCategoryClick: (LibraryCategory) -> Unit,
+    onMyMusic: () -> Unit = {},
+    onCollections: () -> Unit = {},
 ) {
     val categoriesState by libraryCategoriesViewModel.state.collectAsStateWithLifecycle()
 
@@ -97,6 +99,8 @@ fun LibraryScreen(
             TopAppBar(
                 title = { Text(stringResource(Res.string.nav_library)) },
                 actions = {
+                    androidx.compose.material3.TextButton(onClick = onMyMusic) { Text("My music") }
+                    androidx.compose.material3.TextButton(onClick = onCollections) { Text("Collections") }
                     IconButton(
                         onClick = {
                             if (editMode) {

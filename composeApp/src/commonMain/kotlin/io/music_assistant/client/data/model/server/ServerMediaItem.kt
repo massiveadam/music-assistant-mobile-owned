@@ -33,7 +33,7 @@ data class ServerMediaItem(
     // @SerialName("musicbrainz_id") val musicbrainzId: String? = null,
     // Album
     @SerialName("version") val version: String? = null,
-    // @SerialName("external_ids") val externalIds: List<List<String>>? = null,
+    @SerialName("external_ids") val externalIds: List<List<String>> = emptyList(),
     @SerialName("position") val position: Long? = null,
     @SerialName("year") val year: Int? = null,
     @SerialName("artists") val artists: List<ServerMediaItem>? = null,
