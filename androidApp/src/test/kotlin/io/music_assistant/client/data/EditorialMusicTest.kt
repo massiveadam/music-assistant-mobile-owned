@@ -38,6 +38,16 @@ class EditorialMusicTest {
         val local = album("1", "library")
         assertEquals(local, matchEditorialAlbum(entry, listOf(album("2"), local)))
     }
+    @Test fun `unrelated titles and artists never collapse into an exact match`() {
+        val klein = entry.copy(title = "my own fairytale", artist = "Klein")
+        assertNull(matchEditorialAlbum(klein, listOf(album("wrong", title = "Unrelated album", artist = "The Beatles"))))
+        assertNull(matchEditorialAlbum(klein, listOf(album("wrong-artist", title = klein.title, artist = "The Beatles"))))
+    }
+    @Test fun `case punctuation and Unicode preserve an exact catalog match`() {
+        val expected = entry.copy(title = "Échos: Volume 2", artist = "Björk")
+        val result = album("exact", title = "ÉCHOS — Volume 2", artist = "BJÖRK")
+        assertEquals(result, matchEditorialAlbum(expected, listOf(result)))
+    }
     @Test fun `similar title never opens wrong album`() { assertNull(matchEditorialAlbum(entry, listOf(album("1", title = "Album Live")))) }
     @Test fun `wrong artist never opens wrong album`() { assertNull(matchEditorialAlbum(entry, listOf(album("1", artist = "Another Artist")))) }
     @Test fun `ambiguous editions require chooser even without URIs`() {

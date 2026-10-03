@@ -19,6 +19,7 @@ import io.music_assistant.client.data.model.server.events.QueueAddedEvent
 import io.music_assistant.client.data.model.server.events.QueueItemsUpdatedEvent
 import io.music_assistant.client.data.model.server.events.QueueTimeUpdatedEvent
 import io.music_assistant.client.data.model.server.events.QueueUpdatedEvent
+import io.music_assistant.client.data.model.server.events.TasksUpdatedEvent
 import io.music_assistant.client.utils.myJson
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonObject
@@ -59,6 +60,7 @@ data class Event(
             EventType.QUEUE_ITEMS_UPDATED -> myJson.decodeFromJsonElement<QueueItemsUpdatedEvent>(json)
             EventType.QUEUE_TIME_UPDATED -> myJson.decodeFromJsonElement<QueueTimeUpdatedEvent>(json)
             EventType.QUEUE_UPDATED -> myJson.decodeFromJsonElement<QueueUpdatedEvent>(json)
+            EventType.TASKS_UPDATED -> myJson.decodeFromJsonElement<TasksUpdatedEvent>(json)
             EventType.ALL,
             EventType.AUTH_SESSION,
             EventType.CONNECTED,
@@ -74,7 +76,6 @@ data class Event(
             EventType.QUEUE_SETTINGS_UPDATED,
             EventType.SHUTDOWN,
             EventType.SYNC_TASKS_UPDATED,
-            EventType.TASKS_UPDATED,
             -> {
                 logger.d { "Ignoring unmodeled event: $type" }
                 null

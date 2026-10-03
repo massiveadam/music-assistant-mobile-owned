@@ -16,6 +16,10 @@ import io.music_assistant.client.data.model.client.items.Genre
 import io.music_assistant.client.data.model.client.items.RecommendationFolder
 import io.music_assistant.client.data.model.client.items.Track
 import io.music_assistant.client.data.model.server.ServerUser
+import io.music_assistant.client.data.model.server.events.AlbumSyncCompletionTracker
+import io.music_assistant.client.data.model.server.events.TasksUpdatedEvent
+import io.music_assistant.client.data.model.server.events.MediaItemAddedEvent
+import io.music_assistant.client.data.model.server.events.MediaItemDeletedEvent
 import io.music_assistant.client.data.model.server.supportsLeaderLeave
 import io.music_assistant.client.data.model.server.supportsSleepTimer
 import io.music_assistant.client.data.repository.MediaItemRepository
@@ -33,6 +37,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -62,6 +67,8 @@ class HomeScreenViewModel(
     private val jobs = mutableListOf<Job>()
     private var loadDataJob: Job? = null
     private var homeOwner: String? = null
+    private var albumRefreshJob: Job? = null
+    private val albumSync = AlbumSyncCompletionTracker()
 
     private val _links = MutableSharedFlow<String>()
     val links = _links.asSharedFlow()
@@ -135,6 +142,7 @@ class HomeScreenViewModel(
                 }
                 if (owner != homeOwner) {
                     homeOwner = owner
+                    albumSync.clear()
                     settings.setHomeRowsOwner(owner)
                     loadDataJob?.cancel()
                     _state.value = State(DataState.Loading(), DataState.Loading(), settings.homeRowsConfig.value)
@@ -159,6 +167,7 @@ class HomeScreenViewModel(
                                 stopJobs()
                                 jobs.add(watchPlayersData())
                                 jobs.add(watchSelectedPlayerData())
+                                jobs.add(watchAlbumLibraryChanges())
                             }
 
                             is DataConnectionState.AwaitingAuth -> {
@@ -364,8 +373,37 @@ class HomeScreenViewModel(
     }
 
     private fun stopJobs() {
+        albumRefreshJob?.cancel()
+        albumSync.clear()
         jobs.forEach { job -> job.cancel() }
         jobs.clear()
+    }
+
+    private fun watchAlbumLibraryChanges(): Job = viewModelScope.launch {
+        apiClient.events.collect { event ->
+            val changed = when (event) {
+                is TasksUpdatedEvent -> albumSync.observe(event.data)
+                is MediaItemAddedEvent -> event.objectId?.startsWith("library://album/") == true
+                is MediaItemDeletedEvent -> event.objectId?.startsWith("library://album/") == true
+                else -> false
+            }
+            if (changed) {
+                albumRefreshJob?.cancel()
+                val owner = homeOwner
+                albumRefreshJob = viewModelScope.launch {
+                    delay(1500)
+                    if (owner == null || owner != homeOwner) return@launch
+                    val folder = (_state.value.recommendations as? DataState.Data)?.data
+                        ?.firstOrNull { it.folder.itemId == "recently_added_albums" && it.folder.provider in listOf("library", "recommendations") }?.folder
+                    if (folder == null || !mediaItemRepository.supportsRecommendationRowItems()) {
+                        loadRecommendations()
+                    } else {
+                        val items = mediaItemRepository.fetchRecommendationRowItems(folder)
+                        if (items != null && owner == homeOwner) setRowItems(folder, items)
+                    }
+                }
+            }
+        }
     }
 
     private fun watchPlayersData(): Job = viewModelScope.launch {
