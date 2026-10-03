@@ -512,6 +512,10 @@ fun FullPlayerItem(
         // Hold the released absolute seek until the tracker publishes its frozen anchor.
         // Drag values are timeline-relative; convert the latch for display so it reconciles
         // even when the seek lands in another chapter.
+        if (currentMedia?.mediaType == io.music_assistant.client.data.model.client.MediaType.RADIO && currentMedia.uri != null) {
+            NtsNowPlaying(currentMedia.uri, item.player.isPlaying && !poweredOff)
+        }
+
         var userDragPosition by remember { mutableStateOf<Float?>(null) }
         var releasedSeekPosition by remember { mutableStateOf<Float?>(null) }
         // Latch the chapter at drag start so boundary crossings cannot shift the thumb.
