@@ -20,7 +20,7 @@ import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 
 @Composable
-fun NtsNowPlaying(stationUri: String, playing: Boolean, compact: Boolean = false) {
+fun NtsNowPlaying(stationUri: String, active: Boolean, compact: Boolean = false) {
     val api = koinInject<PersonalApi>()
     val connection by api.serviceClient.sessionState.collectAsStateWithLifecycle()
     val session = remember(connection) { api.session() }
@@ -36,14 +36,14 @@ fun NtsNowPlaying(stationUri: String, playing: Boolean, compact: Boolean = false
     var resolving by remember(stationUri, session) { mutableStateOf(false) }
     var sequence by remember(stationUri, session) { mutableStateOf(0) }
 
-    LaunchedEffect(stationUri, session, playing, foreground) {
+    LaunchedEffect(stationUri, session, active, foreground) {
         sequence++
         resolution = null
         resolving = false
         feed = null
         supported = false
         error = null
-        if (!playing || !foreground || session == null) { dialog = false; return@LaunchedEffect }
+        if (!active || !foreground || session == null) { dialog = false; return@LaunchedEffect }
         while (true) {
             try {
                 val result = parseNtsFeed(api.request("/credits/v1/nts-live?uri=${stationUri.encodeURLParameter()}", session = session), session.userId, stationUri)
@@ -88,7 +88,7 @@ fun NtsNowPlaying(stationUri: String, playing: Boolean, compact: Boolean = false
             confirmButton = { TextButton(onClick = { dialog = false; sequence++ }) { Text("Close") } },
             text = {
                 Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Live broadcast data from NTS. Your player may be behind the broadcast. Rare or unreleased tracks may be unidentified.")
+                    Text("Live broadcast data from NTS. This follows the live broadcast, including while your player is paused. Your player may be behind the broadcast. Rare or unreleased tracks may be unidentified.")
                     if (currentFeed?.status == "disconnected") {
                         TextButton(onClick = { open("https://sanchez.drongo-banjo.ts.net:8443/credits/v1/nts-connect") }) { Text("Connect your supporter account") }
                     }

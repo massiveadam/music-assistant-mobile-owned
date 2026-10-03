@@ -513,7 +513,7 @@ fun FullPlayerItem(
         // Drag values are timeline-relative; convert the latch for display so it reconciles
         // even when the seek lands in another chapter.
         if (currentMedia?.mediaType == io.music_assistant.client.data.model.client.MediaType.RADIO && currentMedia.uri != null) {
-            NtsNowPlaying(currentMedia.uri, item.player.isPlaying && !poweredOff)
+            NtsNowPlaying(currentMedia.uri, !poweredOff)
         }
 
         var userDragPosition by remember { mutableStateOf<Float?>(null) }
