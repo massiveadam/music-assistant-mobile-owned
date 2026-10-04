@@ -28,6 +28,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Explicit
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Podcasts
 import androidx.compose.material.icons.filled.Schedule
@@ -66,7 +67,7 @@ import io.music_assistant.client.data.model.client.items.RadioStation
 import io.music_assistant.client.data.model.client.items.RecommendationFolder
 import io.music_assistant.client.data.model.client.items.Track
 import io.music_assistant.client.data.model.client.items.image
-import io.music_assistant.client.data.model.client.items.isOwnedItem
+import io.music_assistant.client.data.model.client.items.hasLibraryEntry
 import io.music_assistant.client.settings.ViewMode
 import io.music_assistant.client.ui.compose.common.icons.AlbumIcon
 import io.music_assistant.client.ui.compose.common.icons.ArtistIcon
@@ -710,33 +711,8 @@ fun BoxScope.Badges(
             tint = Color.Black,
         )
     }
-    if (showOwned && item.isOwnedItem) {
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(4.dp)
-                .background(
-                    color = Color.Black.copy(alpha = 0.8f),
-                    shape = RoundedCornerShape(3.dp),
-                )
-                .border(
-                    width = 0.5.dp,
-                    color = Color.White.copy(alpha = 0.4f),
-                    shape = RoundedCornerShape(3.dp),
-                )
-                .padding(horizontal = 4.dp, vertical = 2.dp),
-        ) {
-            Text(
-                text = "OWNED",
-                color = Color.White,
-                fontSize = 8.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 0.5.sp,
-                lineHeight = 9.sp,
-                maxLines = 1,
-                softWrap = false,
-            )
-        }
+    if (showOwned && item.hasLibraryEntry) {
+        LibraryIndicator(Modifier.align(Alignment.TopStart).padding(4.dp))
     }
 }
 
@@ -801,7 +777,7 @@ internal fun TrackRowItem(
         name = item.displayName,
         subtitle = item.localizedSubtitle(),
         description = contentDescription(item),
-        isOwned = item.isOwnedItem,
+        isOwned = item.hasLibraryEntry,
         prefixContent = if (showTrackNumber) {
             item.trackNumber?.toString()?.let { trackNumber ->
                 {
@@ -841,7 +817,7 @@ internal fun AlbumRowItem(
         name = item.displayName,
         subtitle = item.localizedSubtitle(),
         description = contentDescription(item),
-        isOwned = item.isOwnedItem,
+        isOwned = item.hasLibraryEntry,
         prefixContent = {
             AlbumImage(item)
             Badges(
@@ -868,7 +844,7 @@ internal fun ArtistRowItem(
         name = item.displayName,
         subtitle = item.localizedSubtitle(),
         description = contentDescription(item),
-        isOwned = item.isOwnedItem,
+        isOwned = item.hasLibraryEntry,
         prefixContent = {
             ArtistImage(item)
             Badges(
@@ -895,7 +871,7 @@ internal fun PlaylistRowItem(
         name = item.displayName,
         subtitle = item.localizedSubtitle(),
         description = contentDescription(item),
-        isOwned = item.isOwnedItem,
+        isOwned = item.hasLibraryEntry,
         prefixContent = {
             PlaylistImage(item)
             Badges(
@@ -1175,31 +1151,16 @@ private const val SUBTITLE_ALPHA = 0.6f
  * distinct color, keeping the hierarchy sleek and consistent app-wide.
  */
 @Composable
-internal fun OwnedPill(modifier: Modifier = Modifier) {
-    Box(
+internal fun LibraryIndicator(modifier: Modifier = Modifier) {
+    Icon(
+        imageVector = Icons.Default.LibraryMusic,
+        contentDescription = "In library",
+        tint = Color.White,
         modifier = modifier
-            .background(
-                color = Color.Black.copy(alpha = 0.8f),
-                shape = RoundedCornerShape(3.dp),
-            )
-            .border(
-                width = 0.5.dp,
-                color = Color.White.copy(alpha = 0.45f),
-                shape = RoundedCornerShape(3.dp),
-            )
-            .padding(horizontal = 4.dp, vertical = 1.dp),
-    ) {
-        Text(
-            text = "OWNED",
-            color = Color.White,
-            fontSize = 8.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 0.5.sp,
-            lineHeight = 10.sp,
-            maxLines = 1,
-            softWrap = false,
-        )
-    }
+            .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(5.dp))
+            .padding(3.dp)
+            .size(12.dp),
+    )
 }
 
 @Composable
@@ -1226,7 +1187,7 @@ internal fun MediaItemLabels(
         horizontalArrangement = if (textAlign == TextAlign.Center) Arrangement.Center else Arrangement.Start,
     ) {
         if (isOwned) {
-            OwnedPill()
+            LibraryIndicator()
             Spacer(Modifier.width(6.dp))
         }
         if (!subtitle.isNullOrBlank()) {

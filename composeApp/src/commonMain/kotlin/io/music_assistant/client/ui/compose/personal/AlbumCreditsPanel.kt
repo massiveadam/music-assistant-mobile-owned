@@ -397,6 +397,8 @@ private sealed interface PendingConfirm {
 @Composable
 fun AlbumCreditsPanel(
     album: Album,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
     onNavigateToAlbum: (itemId: String, provider: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -410,23 +412,11 @@ fun AlbumCreditsPanel(
     val controller = remember(uri, sessionKey) { AlbumCreditsController(api, session, uri) }
     DisposableEffect(controller) { onDispose { controller.cancel() } }
 
-    var expanded by remember(uri) { mutableStateOf(false) }
     LaunchedEffect(controller, expanded) {
         if (expanded) controller.load(this)
     }
 
-    if (!expanded) {
-        OutlinedButton(onClick = { expanded = true }, modifier = modifier) {
-            Icon(
-                imageVector = Icons.Default.Person,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp),
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("Credits")
-        }
-        return
-    }
+    if (!expanded) return
 
     val scope = rememberCoroutineScope()
     val uriHandler = LocalUriHandler.current
@@ -462,7 +452,7 @@ fun AlbumCreditsPanel(
                 TextButton(onClick = { showReleaseDialog = true }) {
                     Text("Release details")
                 }
-                IconButton(onClick = { expanded = false }) {
+                IconButton(onClick = { onExpandedChange(false) }) {
                     Icon(
                         imageVector = Icons.Default.KeyboardArrowUp,
                         contentDescription = "Collapse credits",

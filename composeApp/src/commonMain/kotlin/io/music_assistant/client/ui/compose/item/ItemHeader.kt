@@ -37,6 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
@@ -116,12 +117,16 @@ fun ItemHeader(
 
         val textAndControls = @Composable { textAlign: TextAlign ->
             ItemText(item, textAlign, Modifier.padding(top = 16.dp))
-            ItemPlayButton(
-                item,
-                onPlayClick = onPlayClick,
-                tint = colors.controlTint,
+            Row(
                 modifier = Modifier.padding(top = 8.dp),
-            )
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                ItemPlayButton(item, onPlayClick = onPlayClick, tint = colors.controlTint)
+                if (item is Album && !LocalInspectionMode.current) {
+                    io.music_assistant.client.ui.compose.personal.PersonalSaveButton(item)
+                }
+            }
         }
 
         if (WindowClass.isWide()) {

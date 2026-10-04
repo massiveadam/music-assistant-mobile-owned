@@ -66,7 +66,7 @@ import io.music_assistant.client.data.model.client.Queue
 import io.music_assistant.client.data.model.client.items.AppMediaItem
 import io.music_assistant.client.data.model.client.items.Track
 import io.music_assistant.client.data.model.client.items.image
-import io.music_assistant.client.data.model.client.items.isOwnedItem
+import io.music_assistant.client.data.model.client.items.hasLibraryEntry
 import io.music_assistant.client.imageloader.rememberArtworkRequest
 import io.music_assistant.client.ui.compose.common.DataState
 import io.music_assistant.client.ui.compose.common.NoOverscroll
@@ -74,7 +74,7 @@ import io.music_assistant.client.ui.compose.common.action.QueueAction
 import io.music_assistant.client.ui.compose.common.icons.PlayIcon
 import io.music_assistant.client.ui.compose.common.icons.TrackIcon
 import io.music_assistant.client.ui.compose.common.items.DISABLED_ITEM_ALPHA
-import io.music_assistant.client.ui.compose.common.items.OwnedPill
+import io.music_assistant.client.ui.compose.common.items.LibraryIndicator
 import io.music_assistant.client.ui.compose.common.items.localizedSubtitle
 import io.music_assistant.client.ui.compose.common.painters.rememberPlaceholderPainter
 import io.music_assistant.client.utils.conditional
@@ -488,8 +488,8 @@ fun Queue(
                                                 modifier = Modifier.fillMaxWidth(),
                                                 verticalAlignment = Alignment.CenterVertically,
                                             ) {
-                                                if ((item.track as? AppMediaItem)?.isOwnedItem == true) {
-                                                    OwnedPill()
+                                                if ((item.track as? AppMediaItem)?.hasLibraryEntry == true) {
+                                                    LibraryIndicator()
                                                     Spacer(Modifier.width(6.dp))
                                                 }
                                                 Text(

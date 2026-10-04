@@ -39,3 +39,8 @@ Release 0.14.12-owned places scores and known rating/review counts on covers, re
 
 
 Library import refresh (0.14.14-owned / 28): home observes successful album and track scan completions because filesystem track scans create albums after the album task ends. Preserves NTS and editorial artwork from release 27. Actual four-album import batch and signed upgrade verification are recorded in evidence/20261003-recent-import-batch.
+
+
+Album actions and library icons, release 29: native album controls use two equal-width rows; save sits beside Play. Credits expand below the grid. Library icon uses actual MA membership rather than ownership inferred from a provider. Web already has responsive album actions and has no OWNED pill, so this layout change is native only. Verification evidence: evidence/20261004-album-actions.
+
+Verified: 102 native checks, signed build/lint, and upgrade from 28 preserving login and collections. Actual album actions measured 175x48dp at 390px and 140x48dp at 320px with 1.3 font scale; save target is 48x48dp. Send and collection dialogs and Credits expansion checked without sending or changing saved music. Screenshots and bounds in evidence/20261004-album-actions. Physical ARM64 phone execution remains unchecked.

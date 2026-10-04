@@ -90,7 +90,7 @@ private fun rememberInboxSession(api: PersonalApi): PersonalApi.Session? {
 }
 
 @Composable
-fun SendAlbumButton(album: Album) {
+fun SendAlbumButton(album: Album, modifier: Modifier = Modifier) {
     val api = koinInject<PersonalApi>()
     val session = rememberInboxSession(api)
     key(session, album.mediaUri) {
@@ -98,7 +98,8 @@ fun SendAlbumButton(album: Album) {
         OutlinedButton(
             enabled = session != null && !album.mediaUri.isNullOrBlank(),
             onClick = { showing = true },
-            modifier = Modifier.heightIn(min = 48.dp).testTag("SendAlbumButton"),
+            modifier = modifier.heightIn(min = 48.dp).testTag("SendAlbumButton"),
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
         ) { Text("Send album") }
         if (showing && session != null) SendAlbumDialog(album, api, session) { showing = false }
     }

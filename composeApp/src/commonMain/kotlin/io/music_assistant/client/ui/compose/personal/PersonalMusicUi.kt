@@ -55,21 +55,32 @@ fun PersonalSaveButton(item: AppMediaItem) {
 }
 
 @Composable
-fun AlbumCollectionControls(album: Album) {
+fun AlbumCollectionControls(album: Album, onCreditsClick: () -> Unit) {
     val repository = koinInject<PersonalMusicRepository>()
     val state by repository.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var chooser by rememberSaveable(album.uri) { mutableStateOf(false) }
     val inLater = state.albums?.collections?.firstOrNull { it.id == PersonalMusicRepository.LISTEN_LATER }
         ?.contains(album.personalUris()) == true
-    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        PersonalSaveButton(album)
-        OutlinedButton(enabled = !state.busy && state.albums != null, onClick = {
-            scope.launch { repository.collectionAction(if (inLater) "remove" else "add",
-                PersonalMusicRepository.LISTEN_LATER, album.mediaUri) }
-        }) { Text(if (inLater) "In Listen Later" else "Listen Later") }
-        SendAlbumButton(album)
-        OutlinedButton(onClick = { chooser = true }) { Text("Collections") }
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(
+                modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
+                enabled = !state.busy && state.albums != null,
+                onClick = {
+                    scope.launch { repository.collectionAction(if (inLater) "remove" else "add",
+                        PersonalMusicRepository.LISTEN_LATER, album.mediaUri) }
+                },
+            ) { Text(if (inLater) "In Listen Later" else "Listen Later") }
+            SendAlbumButton(album, Modifier.weight(1f))
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { chooser = true }, modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)) { Text("Collections") }
+            OutlinedButton(onClick = onCreditsClick, modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)) { Text("Credits") }
+        }
     }
     state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     if (chooser) AlbumCollectionChooser(album) { chooser = false }

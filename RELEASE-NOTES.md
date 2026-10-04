@@ -1,5 +1,7 @@
-Music Assistant Owned 0.14.14 refreshes newly imported albums after filesystem track scans.
+Music Assistant Owned 0.14.15 fits album actions to phone screens.
 
-The homepage now refreshes when album or track imports finish successfully, including partial success. Filesystem track scans can add albums after the album task has already completed. Repeated completion events and failed scans do not refresh the shelf.
+Save sits beside Play. Listen Later, Send album, Collections, and Credits use two equal-width rows with accessible touch targets. Credits expand below the controls.
 
-Includes the NTS, inbox, review ratings, and artwork improvements from release 27. Install over your existing Owned app to retain login, saved music, and settings.
+A small library icon replaces OWNED across artwork, lists, and the queue. It appears only for a library item or a provider mapping explicitly marked in_library by Music Assistant. A Bandcamp or filesystem catalog match alone no longer displays it.
+
+Includes all improvements from release 28. Upgrade over your existing Owned app to keep your login, saved music, and settings.

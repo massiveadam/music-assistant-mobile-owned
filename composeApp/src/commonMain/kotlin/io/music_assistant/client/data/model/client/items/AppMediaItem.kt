@@ -135,6 +135,10 @@ sealed class AppMediaItem {
 /** A quick favorite toggle is possible only when the add path has a [uri] to send. */
 val AppMediaItem.canBeFavorited: Boolean get() = uri != null
 
+/** Library membership comes from MA, never from a provider name alone. */
+val AppMediaItem.hasLibraryEntry: Boolean
+    get() = isInLibrary || providerMappings?.any { it.inLibrary == true } == true
+
 val AppMediaItem.isOwnedItem: Boolean
     get() {
         val ownedDomains = setOf("filesystem_local", "filesystem_smb", "filesystem_nfs", "bandcamp")

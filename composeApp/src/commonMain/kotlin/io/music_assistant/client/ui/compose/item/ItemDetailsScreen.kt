@@ -353,6 +353,7 @@ private fun ItemContent(
         enabled = rememberDynamicColorsEnabled(),
     )
 
+    var showAlbumCredits by rememberSaveable(item.uri) { mutableStateOf(false) }
     val heroSlot: @Composable () -> Unit = {
         Column(Modifier.fillMaxWidth()) {
         ProvideClickActions(ClickContext.DETAIL) {
@@ -365,8 +366,8 @@ private fun ItemContent(
         }
         if (item is Album && !LocalInspectionMode.current) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-            io.music_assistant.client.ui.compose.personal.AlbumCollectionControls(item)
-            io.music_assistant.client.ui.compose.personal.AlbumCreditsPanel(item, onNavigateToAlbum = { itemId, provider ->
+            io.music_assistant.client.ui.compose.personal.AlbumCollectionControls(item, onCreditsClick = { showAlbumCredits = !showAlbumCredits })
+            io.music_assistant.client.ui.compose.personal.AlbumCreditsPanel(item, expanded = showAlbumCredits, onExpandedChange = { showAlbumCredits = it }, onNavigateToAlbum = { itemId, provider ->
                 onNavigateClick(Album(itemId, provider, "Album", null, null, null, uri = null,
                     images = emptyMap(), version = null, year = null, artists = emptyList()))
             })
