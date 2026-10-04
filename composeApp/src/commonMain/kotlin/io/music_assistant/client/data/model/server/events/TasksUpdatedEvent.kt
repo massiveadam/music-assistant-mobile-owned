@@ -24,7 +24,8 @@ class AlbumSyncCompletionTracker {
         var completed = false
         for (task in tasks) {
             fun field(name: String) = runCatching { task.metadata[name]?.jsonPrimitive?.content }.getOrNull()
-            if (field("task_domain") != "music_sync" || field("media_type") != "album") continue
+            // Track scans can create albums after the separate album task completes.
+            if (field("task_domain") != "music_sync" || field("media_type") !in listOf("album", "track")) continue
             val previous = statuses.put(task.id, task.status)
             if (previous in listOf("pending", "running") && task.status in listOf("success", "partial_success")) completed = true
         }

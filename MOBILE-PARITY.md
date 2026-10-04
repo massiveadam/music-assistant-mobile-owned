@@ -36,3 +36,6 @@ The release also retains inbox and the preceding 0.14.12 shelf/library-sync upda
 ## Editorial mobile layout and library freshness
 
 Release 0.14.12-owned places scores and known rating/review counts on covers, reserves equal text slots, and uses 48dp native album/source controls. Source explanations are in a scrollable info dialog. Cards grow with Android text scaling. Native TASKS_UPDATED album-sync transitions and direct album add/remove events refresh Recently added without restarting the app or changing library dates. Web subscribes to the existing album sync helper and reserves space from the measured player height; its mobile player selectors, album action spacing and send-dialog layer are corrected. These web CSS fixes do not require a native player change. Evidence is in `../../evidence/20261003-mobile-editorial/`.
+
+
+Library import refresh (0.14.14-owned / 28): home observes successful album and track scan completions because filesystem track scans create albums after the album task ends. Preserves NTS and editorial artwork from release 27. Actual four-album import batch and signed upgrade verification are recorded in evidence/20261003-recent-import-batch.

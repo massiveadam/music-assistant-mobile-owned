@@ -19,11 +19,18 @@ class AlbumSyncRefreshTest {
     }
     @Test fun `partial success refreshes but failed or unrelated tasks do not`() {
         val tracker = AlbumSyncCompletionTracker()
-        assertFalse(tracker.observe(listOf(task("running"), task("running", type = "track", id = "tracks"))))
-        assertFalse(tracker.observe(listOf(task("failed"), task("success", type = "track", id = "tracks"))))
+        assertFalse(tracker.observe(listOf(task("running"), task("running", type = "artist", id = "artists"))))
+        assertFalse(tracker.observe(listOf(task("failed"), task("success", type = "artist", id = "artists"))))
         assertFalse(tracker.observe(listOf(task("pending"))))
         assertTrue(tracker.observe(listOf(task("partial_success"))))
         assertFalse(tracker.observe(listOf(task("running", domain = "other"), task("success", domain = "other"))))
+    }
+    @Test fun `track scan creates albums after album scan completed`() {
+        val tracker = AlbumSyncCompletionTracker()
+        assertFalse(tracker.observe(listOf(task("running", id = "albums"), task("running", type = "track", id = "tracks"))))
+        assertTrue(tracker.observe(listOf(task("success", id = "albums"))))
+        assertTrue(tracker.observe(listOf(task("partial_success", type = "track", id = "tracks"))))
+        assertFalse(tracker.observe(listOf(task("partial_success", type = "track", id = "tracks"))))
     }
     @Test fun `account reconnect clears previous tasks`() {
         val tracker = AlbumSyncCompletionTracker()

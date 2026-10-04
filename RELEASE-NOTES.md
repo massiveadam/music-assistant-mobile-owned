@@ -1,9 +1,5 @@
-Music Assistant Owned 0.14.13 adds NTS live track identification.
+Music Assistant Owned 0.14.14 refreshes newly imported albums after filesystem track scans.
 
-- NTS live artist and track titles, with recent broadcast entries in the full player.
-- Find identified songs on your connected music services, including album choices and external service links.
-- Shared supporter connection for web and Android through the Sanchez HTTPS connection page.
-- Optional server playback metadata for cast screens. Album titles appear only when exact catalog matches agree.
-- Unknown and stale entries never leave an older song labeled as current.
+The homepage now refreshes when album or track imports finish successfully, including partial success. Filesystem track scans can add albums after the album task has already completed. Repeated completion events and failed scans do not refresh the shelf.
 
-Includes the inbox and the review-shelf/library-sync improvements from the preceding releases. Install over your existing Owned app to retain your login, saved music and settings. NTS may not identify every track, and your player can lag the live broadcast.
+Includes the NTS, inbox, review ratings, and artwork improvements from release 27. Install over your existing Owned app to retain login, saved music, and settings.
