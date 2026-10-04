@@ -1,7 +1,5 @@
-Music Assistant Owned 0.14.15 fits album actions to phone screens.
+Music Assistant Owned 0.14.16 shows unread albums beside Inbox.
 
-Save sits beside Play. Listen Later, Send album, Collections, and Credits use two equal-width rows with accessible touch targets. Credits expand below the controls.
+The Home Inbox shortcut and Library inbox icon now display a compact unread count. Inbox checks for new albums every 30 seconds while the app is active and refreshes when you return. Reading or archiving an album refreshes the badge immediately. The Inbox list also updates while open.
 
-A small library icon replaces OWNED across artwork, lists, and the queue. It appears only for a library item or a provider mapping explicitly marked in_library by Music Assistant. A Bandcamp or filesystem catalog match alone no longer displays it.
-
-Includes all improvements from release 28. Upgrade over your existing Owned app to keep your login, saved music, and settings.
+Account and server changes clear the previous count. Connection errors retain the last valid count for that account. Includes all improvements from release 29; upgrade over your existing Owned app to keep your login and saved music.

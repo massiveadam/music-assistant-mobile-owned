@@ -115,6 +115,7 @@ fun MainNavigationRoot(
     dspSettingsViewModel: DspSettingsViewModel = koinViewModel(),
     goToSettings: () -> Unit,
 ) {
+    val unreadInbox = io.music_assistant.client.ui.compose.personal.rememberInboxUnreadCount()
     val uriHandler = LocalUriHandler.current
     val toastState = rememberToastState()
     val errorBus: ErrorMessageBus = koinInject()
@@ -319,6 +320,7 @@ fun MainNavigationRoot(
                                 homeScreenState,
                                 libraryScreenState,
                                 searchScreenState,
+                                unreadInbox,
                             ),
                         ),
                     ),
@@ -343,6 +345,7 @@ private fun mainNavEntryProvider(
     homeScreenState: MutableState<HomeScreenState?>,
     libraryScreenState: MutableState<LibraryScreenState?>,
     searchScreenState: MutableState<SearchScreenState?>,
+    unreadInbox: Int,
 ): (NavKey) -> NavEntry<NavKey> {
     // Hoisted here (outlives the per-NavEntry SearchViewModel) to carry an empty-quick-search
     // escalation from the library tab to the Search tab. Set by ItemList, consumed by SearchScreen.
@@ -385,6 +388,7 @@ private fun mainNavEntryProvider(
                 onMyMusic = { multiBackStack.add(MainNav.MyMusic) },
                 onCollections = { multiBackStack.add(MainNav.AlbumCollections) },
                 onInbox = { multiBackStack.add(MainNav.Inbox) },
+                unreadInbox = unreadInbox,
             )
         }
 
@@ -401,6 +405,7 @@ private fun mainNavEntryProvider(
                 onMyMusic = { multiBackStack.add(MainNav.MyMusic) },
                 onCollections = { multiBackStack.add(MainNav.AlbumCollections) },
                 onInbox = { multiBackStack.add(MainNav.Inbox) },
+                unreadInbox = unreadInbox,
                 onCategoryClick = { category ->
                     when (category) {
                         LibraryCategory.BROWSE ->

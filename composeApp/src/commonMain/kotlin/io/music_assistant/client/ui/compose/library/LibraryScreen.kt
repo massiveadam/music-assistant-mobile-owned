@@ -73,6 +73,7 @@ fun LibraryScreen(
     onMyMusic: () -> Unit = {},
     onCollections: () -> Unit = {},
     onInbox: () -> Unit = {},
+    unreadInbox: Int = 0,
 ) {
     val categoriesState by libraryCategoriesViewModel.state.collectAsStateWithLifecycle()
 
@@ -103,7 +104,11 @@ fun LibraryScreen(
                 actions = {
                     androidx.compose.material3.TextButton(onClick = onMyMusic) { Text("My music") }
                     IconButton(onClick = onInbox) {
-                        androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Outlined.MailOutline, "Inbox")
+                        androidx.compose.material3.BadgedBox(badge = {
+                            io.music_assistant.client.ui.compose.personal.InboxUnreadBadge(unreadInbox)
+                        }) {
+                            androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Outlined.MailOutline, "Inbox")
+                        }
                     }
                     androidx.compose.material3.TextButton(onClick = onCollections) { Text("Collections") }
                     IconButton(

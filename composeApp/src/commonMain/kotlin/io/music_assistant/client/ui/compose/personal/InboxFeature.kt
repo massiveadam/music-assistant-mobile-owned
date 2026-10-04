@@ -12,9 +12,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.music_assistant.client.api.PersonalApi
 import io.music_assistant.client.data.factory.MediaItemFactory
@@ -23,6 +28,10 @@ import io.music_assistant.client.data.model.client.items.AppMediaItem
 import io.music_assistant.client.data.model.server.PersonalItem
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -87,6 +96,49 @@ private fun rememberInboxSession(api: PersonalApi): PersonalApi.Session? {
     SideEffect { if (remembered?.same(current) != true && !(remembered == null && current == null)) remembered = current }
     // Do not render or accept actions for the old identity while SideEffect is pending.
     return remembered?.takeIf { it.same(current) && it.same(api.session()) }
+}
+
+private val inboxRefreshVersion = MutableStateFlow(0)
+private fun notifyInboxChanged() = inboxRefreshVersion.update { it + 1 }
+
+/** Single observer in the navigation root, canceled on account change or backgrounding. */
+@Composable
+fun rememberInboxUnreadCount(): Int {
+    val api = koinInject<PersonalApi>()
+    val session = rememberInboxSession(api)
+    val refreshVersion by inboxRefreshVersion.collectAsStateWithLifecycle()
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    var count by remember(session) { mutableIntStateOf(0) }
+    LaunchedEffect(session, refreshVersion, lifecycle) {
+        if (session == null) return@LaunchedEffect
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (isActive) {
+                try { count = loadInbox(api, session).unread }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { /* Retain the last valid count for this account. */ }
+                delay(30000)
+            }
+        }
+    }
+    return count
+}
+
+@Composable
+fun InboxUnreadBadge(count: Int) {
+    if (count > 0) Badge(Modifier.semantics { contentDescription = "$count unread albums" }) {
+        Text(if (count > 99) "99+" else count.toString())
+    }
+}
+
+@Composable
+fun InboxShortcut(unread: Int, onClick: () -> Unit) {
+    TextButton(onClick = onClick) {
+        Text("Inbox")
+        if (unread > 0) {
+            Spacer(Modifier.width(6.dp))
+            InboxUnreadBadge(unread)
+        }
+    }
 }
 
 @Composable
@@ -225,13 +277,20 @@ private fun InboxContent(api: PersonalApi, factory: MediaItemFactory, session: P
     var error by remember { mutableStateOf<String?>(null) }
     var notice by remember { mutableStateOf<String?>(null) }
     var reload by remember { mutableIntStateOf(0) }
-    LaunchedEffect(session, reload) {
-        loading = true
-        error = null
-        try { snapshot = loadInbox(api, session) }
-        catch (cancelled: CancellationException) { throw cancelled }
-        catch (failure: Exception) { if (session.same(api.session())) error = failure.message ?: "Could not load inbox." }
-        finally { if (session.same(api.session())) loading = false }
+    val refreshVersion by inboxRefreshVersion.collectAsStateWithLifecycle()
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(session, reload, refreshVersion, lifecycle) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (isActive) {
+                loading = snapshot == null
+                error = null
+                try { snapshot = loadInbox(api, session) }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (failure: Exception) { if (session.same(api.session())) error = failure.message ?: "Could not load inbox." }
+                finally { if (session.same(api.session())) loading = false }
+                delay(30000)
+            }
+        }
     }
     fun action(kind: String, message: InboxMessage) {
         if (busy || loading || !session.same(api.session())) return
@@ -252,10 +311,12 @@ private fun InboxContent(api: PersonalApi, factory: MediaItemFactory, session: P
                     if (album != null) {
                         snapshot = decodeInboxSnapshot(api.request("/credits/v1/inbox", inboxAction("read", message.id), session), session.userId)
                         api.requireCurrent(session)
+                        notifyInboxChanged()
                         onNavigateClick(album)
                     } else notice = "This album is unavailable through your music sources. Search your catalog for ${message.album.name}."
                 } else {
                     snapshot = decodeInboxSnapshot(api.request("/credits/v1/inbox", inboxAction(kind, message.id), session), session.userId)
+                    notifyInboxChanged()
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (failure: Exception) { if (session.same(api.session())) error = failure.message ?: "Could not update inbox." }

@@ -100,6 +100,7 @@ fun HomeScreen(
     onMyMusic: () -> Unit = {},
     onCollections: () -> Unit = {},
     onInbox: () -> Unit = {},
+    unreadInbox: Int = 0,
 ) {
     val homeScreenState by homeScreenViewModel.state.collectAsStateWithLifecycle()
     var editorialRefresh by remember { mutableStateOf(0) }
@@ -256,7 +257,7 @@ fun HomeScreen(
                         item {
                             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
                                 androidx.compose.material3.TextButton(onClick = onMyMusic) { Text("My music") }
-                                androidx.compose.material3.TextButton(onClick = onInbox) { Text("Inbox") }
+                                io.music_assistant.client.ui.compose.personal.InboxShortcut(unreadInbox, onInbox)
                                 androidx.compose.material3.TextButton(onClick = onCollections) { Text("Album collections") }
                             }
                             personalState.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp)) }
