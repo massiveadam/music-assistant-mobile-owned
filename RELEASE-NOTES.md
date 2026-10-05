@@ -1,5 +1,5 @@
-Music Assistant Owned 0.14.16 shows unread albums beside Inbox.
+# 0.14.17-owned
 
-The Home Inbox shortcut and Library inbox icon now display a compact unread count. Inbox checks for new albums every 30 seconds while the app is active and refreshes when you return. Reading or archiving an album refreshes the badge immediately. The Inbox list also updates while open.
+Inbox cards now have a compact album header and artwork from your available music sources. Open album is the primary action; Find album, Mark read and Archive are in an accessible overflow menu. Refresh uses an icon to keep the heading readable on small screens. Viewing artwork does not mark recommendations read.
 
-Account and server changes clear the previous count. Connection errors retain the last valid count for that account. Includes all improvements from release 29; upgrade over your existing Owned app to keep your login and saved music.
+Retains account-scoped inbox notifications, album action layout, truthful library icons, editorial scores/counts, NTS and Beets import refresh.

@@ -2,6 +2,8 @@
 
 package io.music_assistant.client.ui.compose.personal
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -10,10 +12,19 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextOverflow
+import coil3.compose.AsyncImage
+import io.music_assistant.client.data.model.client.ImageType
+import io.music_assistant.client.data.model.client.items.image
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
@@ -334,26 +345,27 @@ private fun InboxContent(api: PersonalApi, factory: MediaItemFactory, session: P
         LazyColumn(Modifier.weight(1f).fillMaxWidth().testTag("AlbumInboxList"), contentPadding = contentPadding,
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(snapshot?.messages.orEmpty(), key = { it.id }) { message ->
-                Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("From ${message.senderName}", style = MaterialTheme.typography.labelLarge)
-                        Text(message.album.name, style = MaterialTheme.typography.titleMedium)
-                        if (message.album.artists.isNotEmpty()) Text(message.album.artists.joinToString(", "))
-                        if (message.note.isNotEmpty()) Text(message.note)
-                        Text(if (message.readAt == null) "Unread" else "Read", style = MaterialTheme.typography.labelMedium)
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            TextButton(enabled = !loading && !busy && session.origin != null, onClick = { action("open", message) },
-                                modifier = Modifier.heightIn(min = 48.dp)) { Text("Open album") }
-                            if (message.readAt == null) TextButton(enabled = !loading && !busy && session.origin != null,
-                                onClick = { action("read", message) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Mark read") }
-                        }
-                        TextButton(enabled = !loading && !busy && session.same(api.session()), onClick = {
-                            onFindAlbum((message.album.artists + message.album.name).joinToString(" "))
-                        }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Find album") }
-                        TextButton(enabled = !loading && !busy && session.origin != null, onClick = { action("archive", message) },
-                            modifier = Modifier.heightIn(min = 48.dp)) { Text("Archive") }
-                    }
+                var artwork by remember(session, message.id) { mutableStateOf<String?>(null) }
+                // Resolve only visible cards using the recipient's existing permission check.
+                // The open operation is read-only; marking read remains an explicit action.
+                LaunchedEffect(session, message.id) {
+                    if (session.origin == null) return@LaunchedEffect
+                    try {
+                        val result = inboxJson.decodeFromJsonElement<InboxOpened>(api.request(
+                            "/credits/v1/inbox", inboxAction("open", message.id), session))
+                        api.requireCurrent(session)
+                        require(result.userId == session.userId)
+                        val item = result.item?.takeIf { it.mediaType == "album" && it.available }
+                        artwork = item?.let { factory.create(it.asServer())?.image(ImageType.THUMB)?.url }
+                    } catch (cancelled: CancellationException) { throw cancelled }
+                    catch (_: Exception) { /* Album initial remains available offline. */ }
                 }
+                InboxMessageCard(message, artwork, !loading && !busy && session.origin != null,
+                    !loading && !busy && session.same(api.session()),
+                    onOpen = { action("open", message) }, onRead = { action("read", message) },
+                    onArchive = { action("archive", message) }, onFind = {
+                        onFindAlbum((message.album.artists + message.album.name).joinToString(" "))
+                    })
             }
         }
     }
@@ -361,9 +373,68 @@ private fun InboxContent(api: PersonalApi, factory: MediaItemFactory, session: P
 
 @Composable
 private fun InboxTopBar(title: String, onBack: () -> Unit, onRefresh: () -> Unit, enabled: Boolean) {
-    TopAppBar(title = { Text(title) }, navigationIcon = {
+    TopAppBar(title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) }, navigationIcon = {
         IconButton(onClick = onBack, modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
         }
-    }, actions = { TextButton(enabled = enabled, onClick = onRefresh, modifier = Modifier.heightIn(min = 48.dp)) { Text("Refresh") } })
+    }, actions = { IconButton(enabled = enabled, onClick = onRefresh, modifier = Modifier.size(48.dp)) { Icon(Icons.Default.Refresh, "Refresh inbox") } })
+}
+
+
+/** Compact inbox rendering, separate from account-scoped loading and mutations. */
+@Composable
+fun InboxMessageCard(message: InboxMessage, artwork: String?, enabled: Boolean, canFind: Boolean,
+    onOpen: () -> Unit, onRead: () -> Unit, onArchive: () -> Unit, onFind: () -> Unit,
+) {
+    var menuOpen by remember(message.id) { mutableStateOf(false) }
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp).testTag("InboxMessage-${message.id}"),
+        shape = RoundedCornerShape(16.dp)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(64.dp).clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+                    Text(message.album.name.take(1).uppercase(), style = MaterialTheme.typography.headlineSmall,
+                        color = muted)
+                    if (artwork != null) AsyncImage(model = artwork, contentDescription = null,
+                        contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text("From ${message.senderName}", style = MaterialTheme.typography.labelMedium,
+                        color = if (message.readAt == null) MaterialTheme.colorScheme.primary else muted,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(message.album.name, style = MaterialTheme.typography.titleMedium,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    if (message.album.artists.isNotEmpty()) Text(message.album.artists.joinToString(", "),
+                        style = MaterialTheme.typography.bodySmall, color = muted,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+            }
+            if (message.note.isNotEmpty()) Text(message.note, style = MaterialTheme.typography.bodyMedium)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(if (message.readAt == null) "Unread" else "Read",
+                    style = MaterialTheme.typography.labelSmall, color = muted, modifier = Modifier.weight(1f))
+                FilledTonalButton(enabled = enabled, onClick = onOpen, modifier = Modifier.heightIn(min = 48.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)) {
+                    Text("Open album", style = MaterialTheme.typography.labelLarge)
+                }
+                Box {
+                    IconButton(onClick = { menuOpen = true }, enabled = enabled || canFind,
+                        modifier = Modifier.size(48.dp)) {
+                        Icon(Icons.Default.MoreVert, "More actions for ${message.album.name}")
+                    }
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        DropdownMenuItem(text = { Text("Find album") }, enabled = canFind,
+                            onClick = { menuOpen = false; onFind() })
+                        if (message.readAt == null) DropdownMenuItem(text = { Text("Mark read") }, enabled = enabled,
+                            onClick = { menuOpen = false; onRead() })
+                        DropdownMenuItem(text = { Text("Archive") }, enabled = enabled,
+                            onClick = { menuOpen = false; onArchive() })
+                    }
+                }
+            }
+        }
+    }
 }
