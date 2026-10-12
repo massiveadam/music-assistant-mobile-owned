@@ -91,8 +91,8 @@ fun EditorialShelf(
         finally { loading = false }
     }
 
-    // Match only this viewer's first visible albums, with bounded work. Publisher
-    // images remain available while searches run or a match is ambiguous.
+    // Background cover matching is library-only: shelves must not issue a
+    // catalog search per card. Explicit Find album below still searches sources.
     LaunchedEffect(source.id, session, enabled, feed, limit, refresh, reload) {
         artworkOverrides = emptyMap()
         val current = session ?: return@LaunchedEffect
@@ -108,7 +108,7 @@ fun EditorialShelf(
                             val candidates = withTimeoutOrNull(20_000) {
                                 media.search(Request.Library.search(
                                     "${entry.artist} - ${entry.title}", listOf(MediaType.ALBUM), 5,
-                                    libraryOnly = false,
+                                    libraryOnly = true,
                                 )).getOrThrow().albums
                             } ?: return@withPermit
                             currentCoroutineContext().ensureActive()

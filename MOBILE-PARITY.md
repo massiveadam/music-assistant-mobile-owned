@@ -1,5 +1,21 @@
 # Mobile coverage
 
+## October 12 free source-recovery release — backend/web live, APK delivery in progress
+
+The reserved 0.14.18-owned / 32 candidate now also handles optional search source-status and discography unlinked-source fields, search notices/retry, and explicit read-only source recovery. Search uses the normal backend budget, not the short browsing deadline. Unsupported servers retain ordinary behavior; route/account generations reject stale responses.
+
+109 targeted native tests passed and the signed release build/lint completed. The candidate was installed over the earlier unpublished code-32 candidate without uninstalling/clearing data. Signed-in Home retained My music, Inbox, Listen Later/Hotel Usona, saved music and Dining Room TV; native Library rendered. Signer matches published code 31. This is an additional 32→32 test install, not a newly demonstrated 31→32 upgrade for these source-recovery changes; the preceding candidate's 31→32 upgrade is recorded below. October 12 approved rollout deployed all 13 backend modules and web release 3383e9b1598fa3f2. Native Aphex Twin rendered the recovery control/incomplete-source notice against this shared live backend; Home and Album collections retained Listen Later (8), Hotel Usona and the selected player. A transient post-restart collections timeout recovered on the next read. Authenticated server search returned Marina Herlop with both Apple and Bandcamp mappings, while failed Apple album reads kept five Bandcamp releases and reported failure. Source checkpoint and GitHub publication are the next delivery gates; physical phone/audio remain unverified. See `../../evidence/20261012-free-fixes-deploy/README.md` and preparation evidence. No emails or paid credentials; RYM/AOTY remain manual captures.
+
+## Focused backend artist-browsing follow-up — deployed October 12
+
+`../../maintenance/performance/artist-browsing/` is live for existing web/native album-groups requests: skip optional Apple favorite-rating waits, retaining full pagination and private-save overlays. It adds no client API fields and needs no APK release. Seven isolated tests cover the wire response, normal callers, cache/account isolation and cache age. Signed-in WayDroid retained home/library state and opened Aphex Twin's discography with 11 owned releases, matching web; test environment stalled initially and recovered without app-data clearing. Web's warmed group sample returned 41 releases in 255 ms; no native cold-load/audio timing is claimed. See `../../evidence/20261012-artist-browsing-deploy/README.md`. Larger candidate/APK delivery remains separate and pending.
+
+## October 11 responsiveness candidate — not published
+
+0.14.18-owned / 32 adds capability-gated, library-first browsing; retains ready tracklists on failed enrichment; avoids automatic similar-artist and all-provider editorial-artwork requests; and echoes complete original streaming-track DTOs for playback. Null DTO fields are omitted and provider availability/audio formats are retained. Only an unsupported optional capability probe is quiet on older servers; authentication and normal RPC errors keep their handling.
+
+107 targeted native tests pass and signed release APKs build. A signed-in 31→32 WayDroid upgrade retained My music, Listen Later and the selected player without clearing data. Home/album screens were checked at 390px on the earlier candidate; the final RPC-compatibility correction rebuilt successfully and was installed over the candidate, retaining the signed-in state. Native UI ran against the **unchanged live backend**, not the staged interactive modules. See `../../evidence/20261011-responsiveness/README.md` for backend-parser contract and signing evidence. No hardware press-to-audio timing, new-backend native end-to-end check, GitHub publication, or Obtainium delivery is claimed. RYM/AOTY are still manual saved captures; new source status metadata requires separate promotion.
+
 Native Android is part of every Music Assistant update. The release source is this repository; GitHub Releases is the delivery channel Obtainium watches. Web source is `../../retheme/` in the full workspace.
 
 | Feature | Android path |

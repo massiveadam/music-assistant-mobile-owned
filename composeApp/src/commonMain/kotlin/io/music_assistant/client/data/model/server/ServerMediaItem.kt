@@ -110,10 +110,12 @@ data class ProviderMapping(
     @SerialName("provider_domain") val providerDomain: String,
     @SerialName("provider_instance") val providerInstance: String,
     @SerialName("in_library") val inLibrary: Boolean? = null,
-//    @SerialName("available") val available: Boolean,
-//    @SerialName("audio_format") val audioFormat: AudioFormat? = null,
-//    @SerialName("url") val url: String? = null,
-//    @SerialName("details") val details: String?
+    // Retained when the original track is echoed to play_media. Dropping these
+    // would change availability and the server's quality/source ordering.
+    @SerialName("available") val available: Boolean? = null,
+    @SerialName("audio_format") val audioFormat: AudioFormat? = null,
+    @SerialName("url") val url: String? = null,
+    @SerialName("details") val details: String? = null,
 )
 
 @Serializable

@@ -162,7 +162,7 @@ class SearchViewModel(
                         .i { "SearchViewModel: uri=$mediaUri option=$option radio=$radio queue=$queueId" }
                     apiClient.sendRequest(
                         Request.Library.play(
-                            media = listOf(mediaUri),
+                            item = track,
                             queueOrPlayerId = queueId,
                             option = option,
                             endlessMixMode = radio && track !is Genre,
@@ -184,6 +184,8 @@ class SearchViewModel(
             }
         }
     }
+
+    fun retrySources() { performSearch(_state.value.searchState) }
 
     private fun performSearch(searchState: SearchState) {
         searchJob.exchange(
@@ -209,6 +211,7 @@ class SearchViewModel(
                             podcasts = data.podcasts.sortedByDescending { it.isOwnedItem },
                             radios = data.radios.sortedByDescending { it.isOwnedItem },
                             genres = data.genres,
+                            incompleteSources = data.incompleteSources,
                         )
                         if (isActive) {
                             _state.update { it.copy(resultsState = DataState.Data(results)) }
@@ -240,6 +243,7 @@ class SearchViewModel(
     )
 
     data class SearchResults(
+        val incompleteSources: List<String> = emptyList(),
         val artists: List<Artist>,
         val albums: List<Album>,
         val tracks: List<Track>,

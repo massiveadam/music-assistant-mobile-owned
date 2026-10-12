@@ -15,6 +15,7 @@ import io.music_assistant.client.data.model.client.items.Track
  * `data.model.server.SearchResult` DTO or the `mediaItemFactory` directly.
  */
 data class SearchResultData(
+    val incompleteSources: List<String> = emptyList(),
     val artists: List<Artist> = emptyList(),
     val albums: List<Album> = emptyList(),
     val tracks: List<Track> = emptyList(),

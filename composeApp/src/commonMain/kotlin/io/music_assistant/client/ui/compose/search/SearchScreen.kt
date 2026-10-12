@@ -124,6 +124,7 @@ fun SearchScreen(
         ProvideClickActions(ClickContext.SEARCH) {
             SearchContent(
                 state = searchState,
+                onRetrySources = searchViewModel::retrySources,
                 toastState = toastState,
                 onItemClick = { item ->
                     when (item) {
@@ -227,6 +228,7 @@ private class SearchFilterState(selectedMediaTypes: List<MediaType>, libraryOnly
 @Composable
 private fun SearchContent(
     state: SearchViewModel.State,
+    onRetrySources: () -> Unit,
     toastState: ToastState,
     onItemClick: (AppMediaItem) -> Unit,
     onPlayClick: PlayHandler<AppMediaItem>,
@@ -239,6 +241,15 @@ private fun SearchContent(
 ) {
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
+            val incomplete = when (val result = state.resultsState) {
+                is DataState.Data -> result.data.incompleteSources
+                is DataState.Stale -> result.data.incompleteSources
+                else -> emptyList()
+            }
+            if (incomplete.isNotEmpty()) {
+                Text("Some selected sources have not finished or could not be checked. Showing available results.", Modifier.padding(16.dp))
+                androidx.compose.material3.TextButton(onClick = onRetrySources) { Text("Retry sources") }
+            }
             // Results
             when (val resultsState = state.resultsState) {
                 is DataState.Loading -> {
@@ -275,7 +286,8 @@ private fun SearchContent(
                             modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center,
                         ) {
-                            Text(stringResource(Res.string.search_no_results))
+                            Text(if (incomplete.isNotEmpty()) "Search incomplete — no results available yet."
+                                else stringResource(Res.string.search_no_results))
                         }
 
                         1 -> LazyColumn(

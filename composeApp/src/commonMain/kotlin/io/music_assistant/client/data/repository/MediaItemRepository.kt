@@ -30,6 +30,30 @@ import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.scan
 import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+
+private val boundedReadCommands = setOf( "music/artists/get", "music/artists/get_artist",
+    "music/albums/get", "music/albums/get_album", "music/albums/album_tracks", "music/artists/album_groups")
+private val sourceReadCommands = setOf("music/artists/top_tracks", "music/artists/similar_artists")
+
+/** Wire-only browsing augmentation; never changes playback or library writes. */
+fun performanceBrowsingRequest(request: Request, supported: Boolean): Request {
+    val bounded = request.command in boundedReadCommands
+    val perSource = request.command in sourceReadCommands
+    if (!supported || (!bounded && !perSource)) return request
+    return request.copy(args = buildJsonObject {
+        request.args?.forEach { (key, value) -> put(key, value) }
+        if (bounded) put("interactive", JsonPrimitive(true))
+        val provider = request.args?.get("provider_instance_id_or_domain")?.jsonPrimitive?.contentOrNull
+        if (perSource && provider != null && provider != "library") put("provider_filter", JsonPrimitive(provider))
+    })
+}
 
 /**
  * Single seam between RPC + DTO land and the UI's typed `AppMediaItem` world.
@@ -54,10 +78,46 @@ class MediaItemRepository(
      * Failures (RPC error, decode failure, missing payload) surface as a
      * failed [Result] so callers can still log via `result.exceptionOrNull()`.
      */
+    private val capabilitiesLock = Mutex()
+    private var capabilitiesServer: Any? = null
+    private var fastReads = false
+    private var performanceCaps: Map<String, Boolean> = emptyMap()
+
+    suspend fun supportsSourceRecovery(): Boolean {
+        supportsInteractiveReads()
+        return performanceCaps["artist_source_recovery"] == true
+    }
+
+    suspend fun supportsInteractiveReads(): Boolean = capabilitiesLock.withLock {
+        val server = (apiClient.sessionState.value as? HasConnectionData)?.serverInfo ?: return@withLock false
+        if (capabilitiesServer !== server) {
+            val answer = withTimeoutOrNull(1200) {
+                apiClient.sendRequest(Request("music/performance_capabilities"))
+            }
+            performanceCaps = answer?.getOrNull()?.resultAs<Map<String, Boolean>>().orEmpty()
+            fastReads = performanceCaps["interactive_reads"] == true
+            capabilitiesServer = server
+        }
+        fastReads
+    }
+
+    private suspend fun browsingRequest(request: Request): Request {
+        if (request.command == "music/search") {
+            supportsInteractiveReads()
+            return if (performanceCaps["source_status"] == true) request.copy(args = buildJsonObject {
+                request.args?.forEach { (key, value) -> put(key, value) }
+                put("include_source_status", JsonPrimitive(true))
+            }) else request
+        }
+        if (request.command !in boundedReadCommands && request.command !in sourceReadCommands) return request
+        return performanceBrowsingRequest(request, supportsInteractiveReads())
+    }
+
     data class AlbumGroups(
         val owned: List<Album>,
         val all: List<Album>,
         val unavailableSources: List<String>,
+        val unlinkedSources: List<String> = emptyList(),
     )
 
     val personalState get() = personalMusic?.state
@@ -66,18 +126,23 @@ class MediaItemRepository(
             .filter { it.item.mediaType == type.serverValue }
             .mapNotNull { factory.create(it.item.asServer()) }
 
-    suspend fun fetchAlbumGroups(itemId: String, provider: String): Result<AlbumGroups> =
-        apiClient.sendRequest(Request.Artist.getAlbumGroups(itemId, provider)).mapCatching { answer ->
+    suspend fun fetchAlbumGroups(itemId: String, provider: String, inLibraryOnly: Boolean = false,
+                                 recover: Boolean = false): Result<AlbumGroups> =
+        apiClient.sendRequest(if (recover && supportsSourceRecovery()) Request("music/artists/recover_sources", buildJsonObject {
+            put("item_id", JsonPrimitive(itemId)); put("provider_instance_id_or_domain", JsonPrimitive(provider))
+            put("refresh_catalog", JsonPrimitive(true))
+        }) else browsingRequest(Request.Artist.getAlbumGroups(itemId, provider, inLibraryOnly))).mapCatching { answer ->
             val groups = answer.resultAs<ArtistAlbumGroups>() ?: error("Missing album groups")
             AlbumGroups(
                 owned = factory.createList(groups.owned).filterIsInstance<Album>(),
                 all = factory.createList(groups.all).filterIsInstance<Album>(),
                 unavailableSources = groups.unavailableSources,
+                unlinkedSources = groups.unlinkedSources,
             )
         }
 
     suspend fun fetchMediaItems(request: Request): Result<List<AppMediaItem>> =
-        apiClient.sendRequest(request).mapCatching { answer ->
+        apiClient.sendRequest(browsingRequest(request)).mapCatching { answer ->
             answer.resultAs<List<ServerMediaItem>>()
                 ?.let(factory::createList)
                 ?: error("Missing or undecodable media list payload")
@@ -161,13 +226,13 @@ class MediaItemRepository(
      * "not found" stays distinguishable from a transport failure.
      */
     suspend fun fetchMediaItem(request: Request): Result<AppMediaItem?> =
-        apiClient.sendRequest(request).map { answer ->
+        apiClient.sendRequest(browsingRequest(request)).map { answer ->
             answer.resultAs<ServerMediaItem>()?.let(factory::create)
         }
 
     /** Issue [request] and decode its payload as a typed [SearchResultData]. */
     suspend fun search(request: Request): Result<SearchResultData> =
-        apiClient.sendRequest(request).mapCatching { answer ->
+        apiClient.sendRequest(browsingRequest(request)).mapCatching { answer ->
             answer.resultAs<SearchResult>()
                 ?.let(factory::createSearchResult)
                 ?: error("Missing or undecodable search payload")

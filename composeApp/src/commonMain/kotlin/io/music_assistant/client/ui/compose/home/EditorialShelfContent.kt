@@ -67,7 +67,7 @@ fun EditorialShelfContent(
                     }
                     Spacer(Modifier.weight(1f))
                     IconButton(onClick = onReload, enabled = enabled && !loading, modifier = Modifier.size(48.dp)) {
-                        Icon(Icons.Default.Refresh, "Refresh ${source.name}", Modifier.size(20.dp))
+                        Icon(Icons.Default.Refresh, "Reload saved ${source.name} data", Modifier.size(20.dp))
                     }
                     IconButton(onClick = onSource, modifier = Modifier.size(48.dp)) {
                         Icon(Icons.AutoMirrored.Filled.OpenInNew, "Open ${source.provider} source", Modifier.size(19.dp))
@@ -83,7 +83,15 @@ fun EditorialShelfContent(
                     Text(value.window?.let { "${it.start} to ${it.end} · $order" } ?: order,
                         style = MaterialTheme.typography.bodySmall, color = muted,
                         modifier = Modifier.padding(top = 2.dp, bottom = 12.dp))
-                    if (value.stale) Text("Older snapshot. Refresh for the latest available list.",
+                    val captured = value.fetchedAt?.let {
+                        runCatching { Instant.fromEpochSeconds(it.toLong()).toString().take(10) }.getOrNull()
+                    }
+                    Text(captured?.let { "${if (value.stale) "Older capture" else "Captured"} $it." }
+                        ?: "Capture date unavailable.",
+                        style = MaterialTheme.typography.bodySmall, color = muted)
+                    (value.source.refreshNote ?: source.refreshNote)?.let { note -> Text(note,
+                        style = MaterialTheme.typography.bodySmall, color = muted, modifier = Modifier.padding(bottom = 8.dp)) }
+                    if (value.stale && value.source.refreshMode != "manual") Text("Older data. Reload checks the latest saved capture.",
                         style = MaterialTheme.typography.bodySmall, color = muted, modifier = Modifier.padding(bottom = 8.dp))
                 }
             }
@@ -111,7 +119,8 @@ fun EditorialShelfContent(
                     val captured = feed.fetchedAt?.let {
                         runCatching { Instant.fromEpochSeconds(it.toLong()).toString().take(10) }.getOrNull()
                     }
-                    Text(captured?.let { "Updated $it." } ?: "Update date unavailable.")
+                    Text(captured?.let { "Captured $it." } ?: "Capture date unavailable.")
+                    (feed.source.refreshNote ?: source.refreshNote)?.let { Text(it) }
                     if (feed.note.isNotBlank()) Text(feed.note)
                 }
             }, confirmButton = { TextButton(onClick = { showDetails = false }) { Text("Close") } },

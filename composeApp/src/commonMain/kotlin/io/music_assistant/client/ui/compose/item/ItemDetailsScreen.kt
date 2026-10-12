@@ -162,6 +162,7 @@ fun ItemDetailsScreen(
         onLoadSimilarArtists = itemDetailsViewModel::loadSimilarArtists,
         onAlbumMappingChanged = itemDetailsViewModel::loadAlbumsForProvider,
         onRefreshPlaylist = itemDetailsViewModel::refreshPlaylistTracks,
+        onRecoverSources = itemDetailsViewModel::recoverSources,
     )
 }
 
@@ -192,6 +193,7 @@ fun ItemDetails(
     onLoadSimilarArtists: () -> Unit = {},
     onAlbumMappingChanged: (ProviderMapping) -> Unit = { },
     onRefreshPlaylist: () -> Unit = {},
+    onRecoverSources: () -> Unit = {},
 ) {
     val playlistActions = object : PlaylistActions {
         override suspend fun getEditablePlaylists(): List<Playlist> {
@@ -282,6 +284,7 @@ fun ItemDetails(
                     onLoadSimilarArtists = onLoadSimilarArtists,
                     onAlbumMappingChanged = onAlbumMappingChanged,
                     onRefreshPlaylist = onRefreshPlaylist,
+                    onRecoverSources = onRecoverSources,
                 )
             }
 
@@ -321,6 +324,7 @@ private fun ItemContent(
     onLoadSimilarArtists: () -> Unit,
     onAlbumMappingChanged: (ProviderMapping) -> Unit,
     onRefreshPlaylist: () -> Unit,
+    onRecoverSources: () -> Unit,
 ) {
     // Tabs, the loading gate, and the selected tab are all derived in ItemDetailsViewModel.State.
     val tabs = state.tabs
@@ -414,6 +418,9 @@ private fun ItemContent(
                         contentPadding = contentPadding,
                         heroSlot = heroSlot,
                         onAlbumMappingChanged = onAlbumMappingChanged,
+                        onRecoverSources = onRecoverSources,
+                        canRecoverSources = state.canRecoverSources,
+                        recoveringSources = state.recoveringSources,
                     )
                 }
             } else if (tabs.isEmpty()) {
@@ -919,6 +926,9 @@ private fun ArtistContent(
     contentPadding: PaddingValues,
     heroSlot: @Composable () -> Unit,
     onAlbumMappingChanged: (ProviderMapping) -> Unit,
+    onRecoverSources: () -> Unit,
+    canRecoverSources: Boolean,
+    recoveringSources: Boolean,
 ) {
     NoOverscroll {
         LazyColumn(
@@ -926,8 +936,13 @@ private fun ArtistContent(
             contentPadding = contentPadding,
         ) {
             item { heroSlot() }
+            if (canRecoverSources) item {
+                TextButton(onClick = onRecoverSources, enabled = !recoveringSources) {
+                    Text(if (recoveringSources) "Checking sources…" else "Refresh catalog / find other sources")
+                }
+            }
             if (sections.incompleteAlbums) {
-                item { Text("Some sources could not be loaded. Showing albums from the other sources.") }
+                item { Text("Not all catalog sources were checked or linked. Showing available releases.", Modifier.padding(16.dp)) }
             }
 
             item {

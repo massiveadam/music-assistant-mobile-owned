@@ -42,8 +42,9 @@ class RpcEngine(
 ) {
     private val logger = Logger.withTag("RpcEngine")
 
+    private data class PendingResponse(val callback: (Answer) -> Unit, val quietErrorCodes: Set<Int>)
     private val pendingResponses =
-        AtomicReference<Map<String, (Answer) -> Unit>>(emptyMap())
+        AtomicReference<Map<String, PendingResponse>>(emptyMap())
 
     // Accumulated partial results: message_id -> list of result items received so far.
     private val partialResults =
@@ -72,7 +73,7 @@ class RpcEngine(
         }
 
         // Final response — atomically remove the callback and drain partials.
-        val callback = pendingResponses.getAndUpdate { it - messageId }[messageId]
+        val pending = pendingResponses.getAndUpdate { it - messageId }[messageId]
             ?: return true
         val accumulated = partialResults.getAndUpdate { it - messageId }[messageId]
 
@@ -86,23 +87,29 @@ class RpcEngine(
 
         val answer = Answer(finalMessage)
         if (answer.json.containsKey("error_code")) {
-            logger.e { "RPC error for message $messageId: $answer" }
             val errorCode = answer.json["error_code"]?.jsonPrimitive?.int
+            if (errorCode in pending.quietErrorCodes) logger.d { "Expected RPC error $errorCode for $messageId" }
+            else logger.e { "RPC error for message $messageId: $answer" }
             if (errorCode == ERROR_CODE_AUTH_REQUIRED) {
                 onAuthError()
-            } else {
+            } else if (errorCode !in pending.quietErrorCodes) {
                 answer.json["details"]?.jsonPrimitive?.contentOrNull
                     ?.takeIf { it.isNotBlank() }
                     ?.let(onError)
             }
         }
-        callback.invoke(answer)
+        pending.callback.invoke(answer)
         return true
     }
 
     /** Register a pending request callback by message_id. */
     fun registerCallback(messageId: String, callback: (Answer) -> Unit) {
-        pendingResponses.update { it + (messageId to callback) }
+        registerCallback(messageId, emptySet(), callback)
+    }
+
+    /** Silence only expected compatibility errors, never authentication recovery. */
+    fun registerCallback(messageId: String, quietErrorCodes: Set<Int>, callback: (Answer) -> Unit) {
+        pendingResponses.update { it + (messageId to PendingResponse(callback, quietErrorCodes)) }
     }
 
     /** Remove a pending request callback (for cancellation on send failure). */

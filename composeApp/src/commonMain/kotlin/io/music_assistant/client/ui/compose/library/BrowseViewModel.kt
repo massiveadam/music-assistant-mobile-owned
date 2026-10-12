@@ -60,7 +60,7 @@ class BrowseViewModel(
                     .i { "BrowseViewModel: uri=$mediaUri option=$option radio=$radio queue=$queueId" }
                 apiClient.sendRequest(
                     Request.Library.play(
-                        media = listOf(mediaUri),
+                        item = item,
                         queueOrPlayerId = queueId,
                         option = option,
                         endlessMixMode = radio && item !is Genre,

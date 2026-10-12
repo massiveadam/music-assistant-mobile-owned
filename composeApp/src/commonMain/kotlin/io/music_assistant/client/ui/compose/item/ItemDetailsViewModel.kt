@@ -34,6 +34,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
+import kotlinx.coroutines.CancellationException
 
 class ItemDetailsViewModel(
     private val apiClient: ServiceClient,
@@ -55,6 +57,8 @@ class ItemDetailsViewModel(
          * [playableItemsState]. Null for non-artist items.
          */
         val artistSections: ArtistSections = ArtistSections(),
+        val canRecoverSources: Boolean = false,
+        val recoveringSources: Boolean = false,
         /** Lazily loaded on demand from the artist overflow menu; NoData until then. */
         val similarArtistsState: DataState<List<Artist>> = DataState.NoData(),
         val albumsSortOption: SortOption? = null,
@@ -166,10 +170,8 @@ class ItemDetailsViewModel(
                     )
                 }
                 loadArtistAlbumSections(item)
-                // Prefetch similar artists in the background so the sheet opens warm: the server's
-                // first per-artist lookup (lastfm + matching) is the slow part, so we pay it while
-                // the user browses albums/tracks rather than on the menu tap.
-                loadSimilarArtists()
+                // Similar artists load only when their sheet is opened. They must
+                // not compete with the visible discography for provider quotas.
             }
 
             is Album -> {
@@ -244,18 +246,46 @@ class ItemDetailsViewModel(
     private suspend fun fetchArtistItems(request: Request): List<AppMediaItem> =
         mediaItemRepository.fetchMediaItems(request).getOrNull() ?: emptyList()
 
+    fun recoverSources() {
+        val artist = _state.value.itemOrNull() as? Artist ?: return
+        if (_state.value.recoveringSources || !_state.value.canRecoverSources) return
+        _state.update { it.copy(recoveringSources = true) }
+        viewModelScope.launch {
+            try {
+                val groups = mediaItemRepository.fetchAlbumGroups(artist.itemId, artist.provider, recover = true).getOrNull()
+                if (_state.value.itemOrNull()?.uri != artist.uri) return@launch
+                _state.update { current -> current.copy(artistSections = current.artistSections.copy(
+                    discography = groups?.let { DataState.Data(it) } ?: current.artistSections.discography,
+                    incompleteAlbums = groups == null || groups.unavailableSources.isNotEmpty() || groups.unlinkedSources.isNotEmpty(),
+                )) }
+            } finally { _state.update { it.copy(recoveringSources = false) } }
+        }
+    }
+
     private fun loadArtistAlbumSections(artist: Artist) {
         viewModelScope.launch {
-            val groups = mediaItemRepository.fetchAlbumGroups(artist.itemId, artist.provider).getOrNull()
-            fun section(items: List<Album>?): DataState<Section<Album>> =
-                items?.let { DataState.Data(Section(it)) } ?: DataState.Error()
-            _state.update { current -> current.copy(artistSections = current.artistSections.copy(
-                discography = groups?.let { DataState.Data(it) } ?: DataState.Error(),
-                library = section(groups?.owned),
-                albums = section(groups?.all), all = section(groups?.all),
-                eps = section(groups?.all?.filter { it.albumType == AlbumType.EP }),
-                singles = section(groups?.all?.filter { it.albumType == AlbumType.SINGLE }),
-                incompleteAlbums = groups?.unavailableSources?.isNotEmpty() == true,
+            val canRecover = mediaItemRepository.supportsSourceRecovery()
+            _state.update { it.copy(canRecoverSources = canRecover) }
+            fun show(groups: MediaItemRepository.AlbumGroups, pending: Boolean = false) {
+                fun section(items: List<Album>) = DataState.Data(Section(items))
+                _state.update { current -> current.copy(artistSections = current.artistSections.copy(
+                    discography = DataState.Data(groups), library = section(groups.owned),
+                    albums = section(groups.all), all = section(groups.all),
+                    eps = section(groups.all.filter { it.albumType == AlbumType.EP }),
+                    singles = section(groups.all.filter { it.albumType == AlbumType.SINGLE }),
+                    incompleteAlbums = pending || groups.unavailableSources.isNotEmpty() || groups.unlinkedSources.isNotEmpty(),
+                )) }
+            }
+            val fast = mediaItemRepository.supportsInteractiveReads()
+            val full = async { mediaItemRepository.fetchAlbumGroups(artist.itemId, artist.provider) }
+            val local = if (fast) mediaItemRepository.fetchAlbumGroups(artist.itemId, artist.provider, true)
+                .getOrNull()?.takeIf { it.all.isNotEmpty() } else null
+            if (local != null) show(local, pending = true)
+            val groups = full.await().getOrNull()
+            if (groups != null) show(groups)
+            else if (local == null) _state.update { current -> current.copy(artistSections = current.artistSections.copy(
+                discography = DataState.Error(), library = DataState.Error(), albums = DataState.Error(),
+                all = DataState.Error(), eps = DataState.Error(), singles = DataState.Error(), incompleteAlbums = true,
             )) }
         }
 
@@ -361,33 +391,28 @@ class ItemDetailsViewModel(
         viewModelScope.launch {
             _state.update { it.copy(playableItemsState = DataState.Loading()) }
 
-            try {
-                val tracks = mediaItemRepository.fetchMediaItems(
-                    Request.Album.getTracks(
-                        itemId = itemId,
-                        providerInstanceIdOrDomain = provider,
-                    ),
-                ).getOrNull()
-                    ?.filterIsInstance<Track>()
-                    ?: emptyList()
-
+            fun show(tracks: List<Track>) {
                 rawPlayableItems = tracks
-                val sort = _state.value.playableItemsSortOption ?: SortConfig.defaultFor(
-                    SubItemContext.ALBUM_TRACKS,
-                )
-                _state.update {
-                    it.copy(
-                        playableItemsState = DataState.Data(
-                            tracks.clientSorted(
-                                sort,
-                                SubItemContext.ALBUM_TRACKS,
-                            ),
-                        ),
-                    )
+                val sort = _state.value.playableItemsSortOption ?: SortConfig.defaultFor(SubItemContext.ALBUM_TRACKS)
+                _state.update { it.copy(playableItemsState = DataState.Data(tracks.clientSorted(sort, SubItemContext.ALBUM_TRACKS))) }
+            }
+            var stored: List<Track> = emptyList()
+            try {
+                val full = async { mediaItemRepository.fetchMediaItems(Request.Album.getTracks(itemId, provider)) }
+                if (provider == "library" && mediaItemRepository.supportsInteractiveReads()) {
+                    stored = mediaItemRepository.fetchMediaItems(Request.Album.getTracks(itemId, provider, true))
+                        .getOrNull()?.filterIsInstance<Track>().orEmpty()
+                    if (stored.isNotEmpty()) show(stored)
                 }
+                val response = full.await()
+                val tracks = response.getOrNull()?.filterIsInstance<Track>()
+                if (tracks != null && (tracks.isNotEmpty() || stored.isEmpty())) show(tracks)
+                else if (stored.isEmpty()) _state.update { it.copy(playableItemsState = DataState.Error()) }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Logger.e("Failed to load album tracks", e)
-                _state.update { it.copy(playableItemsState = DataState.Error()) }
+                if (stored.isEmpty()) _state.update { it.copy(playableItemsState = DataState.Error()) }
             }
         }
     }
@@ -566,7 +591,7 @@ class ItemDetailsViewModel(
                 }
                 apiClient.sendRequest(
                     Request.Library.play(
-                        media = listOf(mediaUri),
+                        item = itemToPlay,
                         queueOrPlayerId = queueId,
                         option = option,
                         endlessMixMode = endlessMix && item !is Genre,

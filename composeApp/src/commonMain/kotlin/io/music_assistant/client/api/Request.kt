@@ -6,8 +6,11 @@ import io.music_assistant.client.data.model.client.MediaType
 import io.music_assistant.client.data.model.client.QueueOption
 import io.music_assistant.client.data.model.client.RepeatMode
 import io.music_assistant.client.data.model.client.items.MarkableItem
+import io.music_assistant.client.data.model.client.items.AppMediaItem
+import io.music_assistant.client.data.model.server.ServerMediaItem
 import io.music_assistant.client.data.model.server.DspConfig
 import io.music_assistant.client.utils.myJson
+import io.music_assistant.client.utils.mediaItemEchoJson
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
@@ -521,8 +524,12 @@ data class Request @OptIn(ExperimentalUuidApi::class) constructor(
     }
 
     data object Artist {
-        fun getAlbumGroups(itemId: String, providerInstanceIdOrDomain: String) =
-            Library.subItems("music/artists/album_groups", itemId, providerInstanceIdOrDomain)
+        fun getAlbumGroups(itemId: String, providerInstanceIdOrDomain: String, inLibraryOnly: Boolean = false) =
+            Request("music/artists/album_groups", buildJsonObject {
+                put("item_id", JsonPrimitive(itemId))
+                put("provider_instance_id_or_domain", JsonPrimitive(providerInstanceIdOrDomain))
+                if (inLibraryOnly) put("in_library_only", JsonPrimitive(true))
+            })
 
         fun get(
             itemId: String,
@@ -631,10 +638,14 @@ data class Request @OptIn(ExperimentalUuidApi::class) constructor(
         fun getTracks(
             itemId: String,
             providerInstanceIdOrDomain: String,
-        ) = Library.subItems(
-            APICommands.MUSIC_ALBUMS_ALBUM_TRACKS,
-            itemId,
-            providerInstanceIdOrDomain,
+            inLibraryOnly: Boolean = false,
+        ) = Request(
+            command = APICommands.MUSIC_ALBUMS_ALBUM_TRACKS,
+            args = buildJsonObject {
+                put("item_id", JsonPrimitive(itemId))
+                put("provider_instance_id_or_domain", JsonPrimitive(providerInstanceIdOrDomain))
+                if (inLibraryOnly) put("in_library_only", JsonPrimitive(true))
+            },
         )
     }
 
@@ -710,6 +721,28 @@ data class Request @OptIn(ExperimentalUuidApi::class) constructor(
                 put("media_type", JsonPrimitive(mediaType.serverValue))
             },
         )
+
+        /** Reuse server-issued streaming-track metadata instead of fetching it again
+         * just to start playback. Library/container/synthetic items retain URI reads.
+         * Echo the original DTO, never UI/private-save favorite state. */
+        fun play(
+            item: AppMediaItem,
+            queueOrPlayerId: String,
+            option: QueueOption,
+            endlessMixMode: Boolean,
+            startItem: String? = null,
+        ): Request {
+            val uri = requireNotNull(item.mediaUri)
+            val request = play(listOf(uri), queueOrPlayerId, option, endlessMixMode, startItem)
+            val track = item as? TrackItem ?: return request
+            val source = track.source
+            if (track.provider == "library" || source.provider != track.provider || source.itemId != track.itemId ||
+                source.providerMappings.isNullOrEmpty() || source.artists.isNullOrEmpty()) return request
+            return request.copy(args = buildJsonObject {
+                request.args?.forEach { (key, value) -> put(key, value) }
+                put("media", JsonArray(listOf(mediaItemEchoJson.encodeToJsonElement(ServerMediaItem.serializer(), source))))
+            })
+        }
 
         fun play(
             media: List<String>,

@@ -9,7 +9,10 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
 
 @Serializable
-data class EditorialSource(val id: String, val name: String, val provider: String, val url: String, val scale: Double) {
+data class EditorialSource(val id: String, val name: String, val provider: String, val url: String, val scale: Double,
+    @SerialName("refresh_mode") val refreshMode: String = "unknown",
+    @SerialName("refresh_note") val refreshNote: String? = null,
+) {
     val rowId: String get() = "editorial://$id"
 }
 @Serializable

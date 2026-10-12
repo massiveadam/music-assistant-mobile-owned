@@ -5,6 +5,7 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class SearchResult(
+    @SerialName("source_status") val sourceStatus: SearchSourceStatus? = null,
     @SerialName("artists") val artists: List<ServerMediaItem> = emptyList(),
     @SerialName("albums") val albums: List<ServerMediaItem> = emptyList(),
     @SerialName("tracks") val tracks: List<ServerMediaItem> = emptyList(),
@@ -14,3 +15,6 @@ data class SearchResult(
     @SerialName("radio") val radio: List<ServerMediaItem> = emptyList(),
     @SerialName("genres") val genres: List<ServerMediaItem> = emptyList(),
 )
+
+@Serializable
+data class SearchSourceStatus(val complete: Boolean = false, val sources: Map<String, String> = emptyMap())

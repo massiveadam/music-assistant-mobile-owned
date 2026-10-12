@@ -1095,7 +1095,10 @@ class KtorServiceClient(
             val startMs = currentTimeMillis()
             logger.d { "sendRequest[$msgId] cmd=$cmd start" }
 
-            rpcEngine.registerCallback(msgId) { response ->
+            // InvalidCommand=12 is expected for this optional probe on old servers.
+            // Every other error and every authentication failure keeps normal handling.
+            val quietCodes = if (cmd == "music/performance_capabilities") setOf(12) else emptySet()
+            rpcEngine.registerCallback(msgId, quietCodes) { response ->
                 logger.d {
                     "sendRequest[$msgId] cmd=$cmd resumed in " +
                         "${currentTimeMillis() - startMs}ms"
