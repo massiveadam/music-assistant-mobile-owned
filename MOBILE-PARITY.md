@@ -1,5 +1,9 @@
 # Mobile coverage
 
+## October 13 playback regression — backend correction deployed
+
+Real Android playback requests exposed shared backend track/album override signatures rejecting `for_playback`; this was introduced by the server rollout, not proof of an APK/cache failure. Five new tests exercise actual URI dispatch through real concrete controllers; 49 regression executions also passed. Two-controller backend release 8e9d01da8f882b98 was deployed after approval. Real authenticated `music/item_by_uri(..., for_playback=true)` now resolves library track (24ms), Drukqs album (5ms) and Apple EP (86ms), without audio/queue actions. Physical Android audio confirmation awaits the user's retry. Signed-in test-device Home retained My music and the selected player; an initial startup request error cleared after refresh, while a later collection snapshot stalled. Display-reset command timed out before stopping the owned test VM; reset is not newly confirmed. Published app 0.14.18-owned / 32 needs no client rebuild/reinstall for this server-only correction. Prior native UI checks were not audio verification. See `../../evidence/20261013-playback-compatibility/README.md`.
+
 ## October 12 free source-recovery release — live, APK published
 
 The reserved 0.14.18-owned / 32 candidate now also handles optional search source-status and discography unlinked-source fields, search notices/retry, and explicit read-only source recovery. Search uses the normal backend budget, not the short browsing deadline. Unsupported servers retain ordinary behavior; route/account generations reject stale responses.
