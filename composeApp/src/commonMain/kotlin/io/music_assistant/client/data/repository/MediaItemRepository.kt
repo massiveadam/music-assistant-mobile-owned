@@ -56,6 +56,20 @@ fun performanceBrowsingRequest(request: Request, supported: Boolean): Request {
 }
 
 /**
+ * Search augmentation. With source status, a slow source is reported "pending" and the
+ * search screen re-checks it, so the short browsing deadline cannot produce a false
+ * zero-result; without it, keep the normal server search budget.
+ */
+fun searchRequest(request: Request, sourceStatus: Boolean, fastReads: Boolean): Request {
+    if (!sourceStatus) return request
+    return request.copy(args = buildJsonObject {
+        request.args?.forEach { (key, value) -> put(key, value) }
+        put("include_source_status", JsonPrimitive(true))
+        if (fastReads) put("interactive", JsonPrimitive(true))
+    })
+}
+
+/**
  * Single seam between RPC + DTO land and the UI's typed `AppMediaItem` world.
  *
  * Wraps [ServiceClient.sendRequest] + [MediaItemFactory] so ViewModels stop
@@ -103,11 +117,8 @@ class MediaItemRepository(
 
     private suspend fun browsingRequest(request: Request): Request {
         if (request.command == "music/search") {
-            supportsInteractiveReads()
-            return if (performanceCaps["source_status"] == true) request.copy(args = buildJsonObject {
-                request.args?.forEach { (key, value) -> put(key, value) }
-                put("include_source_status", JsonPrimitive(true))
-            }) else request
+            val fastReads = supportsInteractiveReads()
+            return searchRequest(request, sourceStatus = performanceCaps["source_status"] == true, fastReads = fastReads)
         }
         if (request.command !in boundedReadCommands && request.command !in sourceReadCommands) return request
         return performanceBrowsingRequest(request, supportsInteractiveReads())

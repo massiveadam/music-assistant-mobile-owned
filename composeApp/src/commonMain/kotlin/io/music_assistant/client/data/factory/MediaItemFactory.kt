@@ -218,6 +218,7 @@ class MediaItemFactory(
 
     fun createSearchResult(search: SearchResult): SearchResultData = SearchResultData(
         incompleteSources = search.sourceStatus?.sources.orEmpty().filterValues { it != "complete" }.keys.toList(),
+        pendingSources = search.sourceStatus?.sources.orEmpty().filterValues { it == "pending" }.keys.toList(),
         artists = search.artists.mapNotNull { create(it) as? Artist },
         albums = search.albums.mapNotNull { create(it) as? Album },
         tracks = search.tracks.mapNotNull { create(it) as? Track },

@@ -3,6 +3,7 @@ package io.music_assistant.client.data
 import io.music_assistant.client.api.Request
 import io.music_assistant.client.api.RpcEngine
 import io.music_assistant.client.data.repository.performanceBrowsingRequest
+import io.music_assistant.client.data.repository.searchRequest
 import io.music_assistant.client.data.model.server.parseEditorialCatalog
 import kotlinx.serialization.json.*
 import org.junit.Test
@@ -12,6 +13,15 @@ class PerformanceBrowsingTest {
     @Test fun `search never gains the short browsing deadline`() {
         val request = Request("music/search", buildJsonObject { put("search_query", "Marina Herlop") })
         assertSame(request, performanceBrowsingRequest(request, true))
+    }
+    @Test fun `search uses the short deadline only when pending sources are reported`() {
+        val request = Request("music/search", buildJsonObject { put("search_query", "MJ Lenderman") })
+        val fast = searchRequest(request, sourceStatus = true, fastReads = true).args!!
+        assertEquals(JsonPrimitive(true), fast["include_source_status"])
+        assertEquals(JsonPrimitive(true), fast["interactive"])
+        assertEquals(JsonPrimitive("MJ Lenderman"), fast["search_query"])
+        assertNull(searchRequest(request, sourceStatus = true, fastReads = false).args!!["interactive"])
+        assertSame(request, searchRequest(request, sourceStatus = false, fastReads = true))
     }
     @Test fun `optional source status and unlinked groups decode without changing old servers`() {
         val old = Json.decodeFromString<io.music_assistant.client.data.model.server.SearchResult>("{}")

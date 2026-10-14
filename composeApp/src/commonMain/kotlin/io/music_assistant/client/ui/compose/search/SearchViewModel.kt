@@ -19,10 +19,12 @@ import io.music_assistant.client.data.model.client.items.RadioStation
 import io.music_assistant.client.data.model.client.items.Track
 import io.music_assistant.client.data.model.client.items.isOwnedItem
 import io.music_assistant.client.data.repository.MediaItemRepository
+import io.music_assistant.client.data.repository.SearchResultData
 import io.music_assistant.client.ui.Timings
 import io.music_assistant.client.ui.compose.common.DataState
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -192,37 +194,60 @@ class SearchViewModel(
             viewModelScope.launch {
                 _state.update { it.copy(resultsState = DataState.Loading()) }
 
-                val result = mediaItemRepository.search(
-                    Request.Library.search(
-                        query = searchState.query,
-                        mediaTypes = searchState.selectedMediaTypes,
-                        limit = searchLimitFor(searchState.selectedMediaTypes.size),
-                        libraryOnly = searchState.libraryOnly,
-                    ),
-                )
-                if (isActive) {
-                    result.getOrNull()?.let { data ->
-                        val results = SearchResults(
-                            artists = data.artists.sortedByDescending { it.isOwnedItem },
-                            albums = data.albums.sortedByDescending { it.isOwnedItem },
-                            tracks = data.tracks.sortedByDescending { it.isOwnedItem },
-                            playlists = data.playlists.sortedByDescending { it.isOwnedItem },
-                            audiobooks = data.audiobooks.sortedByDescending { it.isOwnedItem },
-                            podcasts = data.podcasts.sortedByDescending { it.isOwnedItem },
-                            radios = data.radios.sortedByDescending { it.isOwnedItem },
-                            genres = data.genres,
-                            incompleteSources = data.incompleteSources,
-                        )
-                        if (isActive) {
-                            _state.update { it.copy(resultsState = DataState.Data(results)) }
+                // A source still searching server-side is re-checked quietly, so its results
+                // slot in without "Retry sources"; only then is it reported as incomplete.
+                var followUp = 0
+                var pending = emptyList<String>()
+                while (isActive) {
+                    val result = mediaItemRepository.search(
+                        Request.Library.search(
+                            query = searchState.query,
+                            mediaTypes = searchState.selectedMediaTypes,
+                            limit = searchLimitFor(searchState.selectedMediaTypes.size),
+                            libraryOnly = searchState.libraryOnly,
+                        ),
+                    )
+                    if (!isActive) break
+                    val data = result.getOrNull()
+                    if (data == null) {
+                        if (followUp == 0) {
+                            _state.update { it.copy(resultsState = DataState.Error()) }
+                        } else {
+                            // Keep the ready results; the still-pending sources become incomplete.
+                            _state.update { state ->
+                                val ready = (state.resultsState as? DataState.Data)?.data
+                                    ?: return@update state
+                                state.copy(resultsState = DataState.Data(
+                                    ready.copy(incompleteSources = (ready.incompleteSources + pending).distinct()),
+                                ))
+                            }
                         }
-                    } ?: run {
-                        _state.update { it.copy(resultsState = DataState.Error()) }
+                        break
                     }
+                    val plan = followUpPlan(data, followUp)
+                    pending = data.pendingSources
+                    val results = SearchResults(
+                        artists = data.artists.sortedByDescending { it.isOwnedItem },
+                        albums = data.albums.sortedByDescending { it.isOwnedItem },
+                        tracks = data.tracks.sortedByDescending { it.isOwnedItem },
+                        playlists = data.playlists.sortedByDescending { it.isOwnedItem },
+                        audiobooks = data.audiobooks.sortedByDescending { it.isOwnedItem },
+                        podcasts = data.podcasts.sortedByDescending { it.isOwnedItem },
+                        radios = data.radios.sortedByDescending { it.isOwnedItem },
+                        genres = data.genres,
+                        incompleteSources = plan.visibleIncompleteSources,
+                    )
+                    _state.update { it.copy(resultsState = DataState.Data(results)) }
+                    if (!plan.followUp) break
+                    followUp++
+                    delay(SEARCH_FOLLOW_UP_DELAY_MS)
                 }
             },
         )?.cancel()
     }
+
+    /** Whether to re-check, and which sources to report as incomplete meanwhile. */
+    data class FollowUpPlan(val followUp: Boolean, val visibleIncompleteSources: List<String>)
 
     data class State(
         val searchState: SearchState,
@@ -271,6 +296,19 @@ class SearchViewModel(
     }
 
     internal companion object {
+        const val SEARCH_FOLLOW_UP_DELAY_MS = 1500L
+        const val SEARCH_MAX_FOLLOW_UPS = 4
+
+        /** Pending sources stay hidden from "incomplete" while another follow-up is due. */
+        fun followUpPlan(data: SearchResultData, followUpsDone: Int): FollowUpPlan {
+            val again = data.pendingSources.isNotEmpty() && followUpsDone < SEARCH_MAX_FOLLOW_UPS
+            return FollowUpPlan(
+                followUp = again,
+                visibleIncompleteSources =
+                    if (again) data.incompleteSources - data.pendingSources.toSet() else data.incompleteSources,
+            )
+        }
+
         // music/search applies `limit` PER MEDIA TYPE, and streaming providers page it in
         // chunks of 10 behind a rate limiter (~1.0-1.5s per page). The server abandons a
         // provider that takes longer than its soft timeout (8s) and reports it as empty,

@@ -16,6 +16,8 @@ import io.music_assistant.client.data.model.client.items.Track
  */
 data class SearchResultData(
     val incompleteSources: List<String> = emptyList(),
+    /** Sources the server is still searching in the background; a subset of [incompleteSources]. */
+    val pendingSources: List<String> = emptyList(),
     val artists: List<Artist> = emptyList(),
     val albums: List<Album> = emptyList(),
     val tracks: List<Track> = emptyList(),
