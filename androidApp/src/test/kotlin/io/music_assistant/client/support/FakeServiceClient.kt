@@ -352,15 +352,22 @@ class FakeServiceClient : ServiceClient {
             }
 
             APICommands.PLAYER_QUEUES_PLAY_MEDIA -> {
-                val mediaUri = ((request.args!!["media"] as JsonArray)[0] as JsonPrimitive).content
+                // The real API accepts URI strings and complete streaming DTOs.
+                val value = request.args!!["media"]
+                val media = if (value is JsonArray) value.toList() else listOfNotNull(value)
                 val startItemId = request.getArgOrNull("start_item")
-                val mediaTracks =
+                val mediaTracks = media.flatMap { entry ->
+                    val mediaUri = when (entry) {
+                        is JsonPrimitive -> entry.content
+                        is JsonObject -> (entry["uri"] as JsonPrimitive).content
+                        else -> error("Unsupported playback media: $entry")
+                    }
                     mediaItemStore.getByUri(mediaUri)?.let { item ->
                         when (MediaType.fromServer(item.mediaType)) {
                             MediaType.ALBUM -> {
                                 val albumTracks = mediaItemStore.getTracksByAlbum(item)
                                 val startIndex = if (startItemId != null) {
-                                    albumTracks.indexOfFirst { it.itemId == startItemId }
+                                    albumTracks.indexOfFirst { it.itemId == startItemId || it.uri == startItemId }
                                 } else {
                                     0
                                 }
@@ -372,7 +379,7 @@ class FakeServiceClient : ServiceClient {
                             MediaType.PLAYLIST -> {
                                 val playlistTracks = mediaItemStore.getTracksByPlaylist(item)
                                 val startIndex = if (startItemId != null) {
-                                    playlistTracks.indexOfFirst { it.itemId == startItemId }
+                                    playlistTracks.indexOfFirst { it.itemId == startItemId || it.uri == startItemId }
                                 } else {
                                     0
                                 }
@@ -383,6 +390,11 @@ class FakeServiceClient : ServiceClient {
                             else -> TODO()
                         }
                     } ?: emptyList()
+                }.let { all ->
+                    // A row play can supply the complete track batch with a start URI.
+                    val start = all.indexOfFirst { it.itemId == startItemId || it.uri == startItemId }
+                    if (start >= 0) all.drop(start) else all
+                }
 
                 val queueId = request.getArg("queue_id")
                 updateQueue(

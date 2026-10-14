@@ -44,9 +44,12 @@ fun ComposePage.clickOnMedia(
     withinTag: String? = null,
     provider: String? = null,
 ): ItemPage {
-    composeTestRule.onNode(mediaItemMatcher(serverMediaItem, withinTag, provider))
-        .assertIsDisplayed()
-        .performClick()
+    // The same item can legitimately appear on multiple Home shelves. Select a
+    // visible matching card; do not require its description to be globally unique.
+    val matches = composeTestRule.onAllNodes(mediaItemMatcher(serverMediaItem, withinTag, provider))
+    val visible = (0 until matches.fetchSemanticsNodes().size)
+        .map { matches[it] }.first { it.isDisplayed() }
+    visible.assertIsDisplayed().performClick()
 
     val type = MediaType.fromServer(serverMediaItem.mediaType) ?: MediaType.UNKNOWN
     return ItemPage(serverMediaItem.name, type, navigationItem, composeTestRule).assertOnPage()
