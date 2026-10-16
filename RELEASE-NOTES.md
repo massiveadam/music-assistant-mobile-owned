@@ -1,4 +1,13 @@
-# 0.14.18-owned
+# 0.14.20-owned
+
+Search results keep the server's ranking. Popular Apple Music results are no longer pushed below alphabetical library or owned items, results by the artist you searched for come before covers and tributes, and an album on both Apple Music and Bandcamp opens the Apple copy. An exact title match in your library still comes first. Requires the matching server update (already live on Sanchez).
+
+## Previous release: 0.14.19-owned
+
+Search fills in slow sources automatically. Library results appear right away; if Apple Music (or another streaming source) is still searching on the server, the app quietly checks again every 1.5 seconds, up to 4 times, and adds its results in place. "Not fully checked" and Retry only appear if a source still hasn't answered after that.
+
+## Previous release: 0.14.18-owned
+
 
 Faster library-first artist/album browsing with capability-gated server support. Search reports incomplete sources and offers retry without discarding ready results. Artist pages can explicitly refresh catalogs and recover corroborated source links without changing your library mappings or private saves. Older servers retain compatibility.
 

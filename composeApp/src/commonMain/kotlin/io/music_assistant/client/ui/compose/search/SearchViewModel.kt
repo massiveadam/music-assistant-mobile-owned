@@ -17,7 +17,6 @@ import io.music_assistant.client.data.model.client.items.Playlist
 import io.music_assistant.client.data.model.client.items.Podcast
 import io.music_assistant.client.data.model.client.items.RadioStation
 import io.music_assistant.client.data.model.client.items.Track
-import io.music_assistant.client.data.model.client.items.isOwnedItem
 import io.music_assistant.client.data.repository.MediaItemRepository
 import io.music_assistant.client.data.repository.SearchResultData
 import io.music_assistant.client.ui.Timings
@@ -226,17 +225,7 @@ class SearchViewModel(
                     }
                     val plan = followUpPlan(data, followUp)
                     pending = data.pendingSources
-                    val results = SearchResults(
-                        artists = data.artists.sortedByDescending { it.isOwnedItem },
-                        albums = data.albums.sortedByDescending { it.isOwnedItem },
-                        tracks = data.tracks.sortedByDescending { it.isOwnedItem },
-                        playlists = data.playlists.sortedByDescending { it.isOwnedItem },
-                        audiobooks = data.audiobooks.sortedByDescending { it.isOwnedItem },
-                        podcasts = data.podcasts.sortedByDescending { it.isOwnedItem },
-                        radios = data.radios.sortedByDescending { it.isOwnedItem },
-                        genres = data.genres,
-                        incompleteSources = plan.visibleIncompleteSources,
-                    )
+                    val results = searchResultsFrom(data, plan.visibleIncompleteSources)
                     _state.update { it.copy(resultsState = DataState.Data(results)) }
                     if (!plan.followUp) break
                     followUp++
@@ -298,6 +287,23 @@ class SearchViewModel(
     internal companion object {
         const val SEARCH_FOLLOW_UP_DELAY_MS = 1500L
         const val SEARCH_MAX_FOLLOW_UPS = 4
+
+        /**
+         * Keep the server's order. It already ranks by relevance, places a library copy at
+         * its catalog position and lets exact library titles lead; moving every owned item
+         * first would put alphabetical library order back above popular catalog results.
+         */
+        fun searchResultsFrom(data: SearchResultData, incompleteSources: List<String>) = SearchResults(
+            artists = data.artists,
+            albums = data.albums,
+            tracks = data.tracks,
+            playlists = data.playlists,
+            audiobooks = data.audiobooks,
+            podcasts = data.podcasts,
+            radios = data.radios,
+            genres = data.genres,
+            incompleteSources = incompleteSources,
+        )
 
         /** Pending sources stay hidden from "incomplete" while another follow-up is due. */
         fun followUpPlan(data: SearchResultData, followUpsDone: Int): FollowUpPlan {

@@ -1,8 +1,10 @@
 package io.music_assistant.client.ui.compose.search
 
+import io.music_assistant.client.data.model.client.items.Track
 import io.music_assistant.client.data.repository.SearchResultData
 import io.music_assistant.client.ui.compose.search.SearchViewModel.Companion.SEARCH_MAX_FOLLOW_UPS
 import io.music_assistant.client.ui.compose.search.SearchViewModel.Companion.followUpPlan
+import io.music_assistant.client.ui.compose.search.SearchViewModel.Companion.searchResultsFrom
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -41,4 +43,18 @@ class SearchFollowUpTest {
         assertFalse(plan.followUp)
         assertEquals(emptyList(), plan.visibleIncompleteSources)
     }
+
+    @Test
+    fun `search keeps the server order instead of moving owned items first`() {
+        // Server order for "radiohead": Apple's popular track, a library-only track, another Apple track.
+        val tracks = listOf(track("apple_music--a", "Creep"), track("library", "15 Step"), track("apple_music--a", "Let Down"))
+        val results = searchResultsFrom(SearchResultData(tracks = tracks), emptyList())
+        assertEquals(listOf("Creep", "15 Step", "Let Down"), results.tracks.map { it.name })
+    }
+
+    private fun track(provider: String, name: String) = Track(
+        itemId = name, provider = provider, name = name, providerMappings = null, metadata = null,
+        favorite = null, uri = null, images = emptyMap(), duration = null, isPlayable = true,
+        artists = emptyList(), album = null, discNumber = null, trackNumber = null, position = null, version = null,
+    )
 }
