@@ -1,4 +1,9 @@
-# 0.14.20-owned
+# 0.14.21-owned
+
+Offline listening for your local library. Open an album that has local files and choose Download for offline; the server converts it to space-saving Opus (about 1 MB per minute). Downloads live in the new Downloads screen (Home, Library, or the connection screen when the server is unreachable) and play with no connection, including lock-screen and headset controls. Apple Music and other streaming albums can't be downloaded. Downloading needs the direct or Sanchez HTTPS connection.
+
+## Previous release: 0.14.20-owned
+
 
 Search results keep the server's ranking. Popular Apple Music results are no longer pushed below alphabetical library or owned items, results by the artist you searched for come before covers and tributes, and an album on both Apple Music and Bandcamp opens the Apple copy. An exact title match in your library still comes first. Requires the matching server update (already live on Sanchez).
 

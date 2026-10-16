@@ -2,6 +2,7 @@
 
 package io.music_assistant.client.ui.compose.library
 
+import androidx.compose.material.icons.outlined.DownloadForOffline
 import androidx.compose.material.icons.outlined.MailOutline
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -72,6 +73,7 @@ fun LibraryScreen(
     onCategoryClick: (LibraryCategory) -> Unit,
     onMyMusic: () -> Unit = {},
     onCollections: () -> Unit = {},
+    onDownloads: () -> Unit = {},
     onInbox: () -> Unit = {},
     unreadInbox: Int = 0,
 ) {
@@ -111,6 +113,9 @@ fun LibraryScreen(
                         }
                     }
                     androidx.compose.material3.TextButton(onClick = onCollections) { Text("Collections") }
+                    IconButton(onClick = onDownloads) {
+                        androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Outlined.DownloadForOffline, "Downloads")
+                    }
                     IconButton(
                         onClick = {
                             if (editMode) {

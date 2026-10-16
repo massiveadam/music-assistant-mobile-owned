@@ -81,6 +81,7 @@ fun AlbumCollectionControls(album: Album, onCreditsClick: () -> Unit) {
             OutlinedButton(onClick = onCreditsClick, modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)) { Text("Credits") }
         }
+        io.music_assistant.client.ui.compose.offline.AlbumDownloadButton(album)
     }
     state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     if (chooser) AlbumCollectionChooser(album) { chooser = false }

@@ -114,6 +114,7 @@ fun TopLevelNavRoot(modifier: Modifier = Modifier) {
                     polymorphic(NavKey::class) {
                         subclass(Nav.Main::class, Nav.Main.serializer())
                         subclass(Nav.Settings::class, Nav.Settings.serializer())
+                        subclass(Nav.Downloads::class, Nav.Downloads.serializer())
                     }
                 }
             },
@@ -133,8 +134,9 @@ fun TopLevelNavRoot(modifier: Modifier = Modifier) {
                     // Backgrounded — preserve current screen for instant foreground reconnect
                 } else {
                     // Navigate to Settings for all other disconnected states
-                    // This includes: ByUser, Initial, NoServerData, and Error (max attempts reached)
-                    if (backStack.last() !is Nav.Settings) {
+                    // This includes: ByUser, Initial, NoServerData, and Error (max attempts reached).
+                    // Offline listening keeps playing when the connection drops.
+                    if (backStack.last() !is Nav.Settings && backStack.last() !is Nav.Downloads) {
                         backStack.clear()
                         backStack.add(Nav.Settings)
                     }
@@ -210,6 +212,13 @@ fun TopLevelNavRoot(modifier: Modifier = Modifier) {
                             backStack.add(Nav.Main)
                         },
                         exitApp = { exitApp() },
+                        goToDownloads = { backStack.add(Nav.Downloads) },
+                    )
+                }
+
+                entry<Nav.Downloads> {
+                    io.music_assistant.client.ui.compose.offline.DownloadsScreen(
+                        onBack = { backStack.removeLastOrNull() },
                     )
                 }
             },
@@ -240,4 +249,7 @@ private sealed interface Nav : NavKey {
 
     @Serializable
     data object Settings : Nav
+
+    @Serializable
+    data object Downloads : Nav
 }

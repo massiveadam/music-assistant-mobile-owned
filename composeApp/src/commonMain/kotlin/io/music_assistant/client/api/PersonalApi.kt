@@ -1,11 +1,15 @@
 package io.music_assistant.client.api
 
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.timeout
+import io.ktor.client.request.prepareGet
 import io.ktor.client.request.request
 import io.ktor.client.request.header
 import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsChannel
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpMethod
+import io.ktor.utils.io.ByteReadChannel
 import io.music_assistant.client.utils.SessionState
 import io.music_assistant.client.utils.authenticatedToken
 import io.music_assistant.client.utils.createPlatformHttpClient
@@ -77,5 +81,33 @@ class PersonalApi(
             (result?.get("error") as? JsonPrimitive)?.contentOrNull ?: "Could not load your music (HTTP $status)."
         }
         return result ?: error("Invalid response from your music service.")
+    }
+
+    /**
+     * Stream a binary GET (offline downloads) into [sink]. Needs the direct or Sanchez
+     * HTTPS connection: the WebRTC proxy buffers whole bodies and is meant for small reads.
+     */
+    suspend fun <T> download(path: String, session: Session, sink: suspend (ByteReadChannel) -> T): T {
+        require(path.startsWith("/credits/v1/offline/") && !path.contains(".."))
+        requireCurrent(session)
+        val origin = session.origin
+            ?: error("Downloads need the direct or Sanchez HTTPS connection.")
+        return http.prepareGet(origin.trimEnd('/') + path) {
+            header("Authorization", "Bearer ${session.token}")
+            // The server converts the file before sending any bytes; long tracks take a while,
+            // so the socket also has to tolerate that silence.
+            timeout {
+                requestTimeoutMillis = 300_000
+                socketTimeoutMillis = 180_000
+            }
+        }.execute { response ->
+            check(response.status.value in 200..299) {
+                val text = runCatching { response.bodyAsText() }.getOrNull()
+                val message = text?.let { runCatching { myJson.decodeFromString<JsonObject>(it) }.getOrNull() }
+                    ?.get("error") as? JsonPrimitive
+                message?.contentOrNull ?: "Download failed (HTTP ${response.status.value})."
+            }
+            sink(response.bodyAsChannel())
+        }
     }
 }

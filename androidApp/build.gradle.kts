@@ -14,8 +14,8 @@ android {
         applicationId = "io.music_assistant.client"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
-        versionCode = 34
-        versionName = "0.14.20-owned"
+        versionCode = 35
+        versionName = "0.14.21-owned"
     }
     packaging {
         resources {
@@ -121,6 +121,9 @@ dependencies {
     implementation(libs.koin.android)
     implementation(libs.koin.androidx.compose)
     implementation(libs.androidx.media)
+    implementation(libs.media3.exoplayer)
+    implementation(libs.media3.session)
+    implementation(libs.ktor.client.core) // ByteReadChannel for offline downloads
     implementation(libs.androidx.car.app)
     implementation(libs.coil)
     implementation(libs.kermit)

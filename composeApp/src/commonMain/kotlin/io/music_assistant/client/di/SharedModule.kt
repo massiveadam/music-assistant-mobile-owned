@@ -104,6 +104,19 @@ fun sharedModule(
         singleOf(::PlayerRequestFactory)    // Pure PlayerAction → Request mapper
         singleOf(::LocalPlayerController)    // Local player: lifecycle + state + commands
         single { io.music_assistant.client.api.PersonalApi(get()) }
+        // Offline downloads need platform storage and a local player (Android); else unsupported.
+        single<io.music_assistant.client.offline.OfflineMusic> {
+            val storage = getOrNull<io.music_assistant.client.offline.OfflineStorage>()
+            val player = getOrNull<io.music_assistant.client.offline.OfflinePlayer>()
+            storage?.let { files ->
+                player?.let {
+                    io.music_assistant.client.offline.OfflineLibrary(
+                        io.music_assistant.client.offline.PersonalApiTransport(get()), files, it,
+                    )
+                }
+            }
+                ?: io.music_assistant.client.offline.UnsupportedOfflineMusic
+        }
         single { io.music_assistant.client.data.repository.PersonalMusicRepository(get(), errorBus = get()) }
         single { MediaItemFactory(get(), get()) } // private saves overlay
         // singleOf(::MediaItemFactory)        // Stateless DTO → domain mapper

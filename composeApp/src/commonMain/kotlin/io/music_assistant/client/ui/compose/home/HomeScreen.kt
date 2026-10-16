@@ -99,6 +99,7 @@ fun HomeScreen(
     state: HomeScreenState,
     onMyMusic: () -> Unit = {},
     onCollections: () -> Unit = {},
+    onDownloads: () -> Unit = {},
     onInbox: () -> Unit = {},
     unreadInbox: Int = 0,
 ) {
@@ -182,6 +183,7 @@ fun HomeScreen(
                 title = homeTitle,
                 onMyMusic = onMyMusic,
                 onCollections = onCollections,
+                onDownloads = onDownloads,
                 onRefresh = { editorialRefresh++; homeScreenViewModel.loadData(); state.coroutineScope.launch { personalRepository.refresh() } },
                 onToggleEditMode = {
                     if (editMode) {
@@ -259,6 +261,7 @@ fun HomeScreen(
                                 androidx.compose.material3.TextButton(onClick = onMyMusic) { Text("My music") }
                                 io.music_assistant.client.ui.compose.personal.InboxShortcut(unreadInbox, onInbox)
                                 androidx.compose.material3.TextButton(onClick = onCollections) { Text("Album collections") }
+                                androidx.compose.material3.TextButton(onClick = onDownloads) { Text("Downloads") }
                             }
                             personalState.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp)) }
                             editorial.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp)) }
@@ -417,6 +420,7 @@ private fun LandingPageTopBar(
     title: String = "Your music",
     onMyMusic: () -> Unit = {},
     onCollections: () -> Unit = {},
+    onDownloads: () -> Unit = {},
     onInbox: () -> Unit = {},
 ) {
     TopAppBar(

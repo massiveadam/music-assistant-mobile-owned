@@ -387,6 +387,7 @@ private fun mainNavEntryProvider(
                 state = screenState,
                 onMyMusic = { multiBackStack.add(MainNav.MyMusic) },
                 onCollections = { multiBackStack.add(MainNav.AlbumCollections) },
+                onDownloads = { multiBackStack.add(MainNav.Downloads) },
                 onInbox = { multiBackStack.add(MainNav.Inbox) },
                 unreadInbox = unreadInbox,
             )
@@ -404,6 +405,7 @@ private fun mainNavEntryProvider(
                 state = screenState,
                 onMyMusic = { multiBackStack.add(MainNav.MyMusic) },
                 onCollections = { multiBackStack.add(MainNav.AlbumCollections) },
+                onDownloads = { multiBackStack.add(MainNav.Downloads) },
                 onInbox = { multiBackStack.add(MainNav.Inbox) },
                 unreadInbox = unreadInbox,
                 onCategoryClick = { category ->
@@ -430,6 +432,11 @@ private fun mainNavEntryProvider(
                     multiBackStack.currentBackStack = 2
                     multiBackStack.resetCurrentBackStack()
                 },
+            )
+        }
+        entry<MainNav.Downloads> {
+            io.music_assistant.client.ui.compose.offline.DownloadsScreen(
+                onBack = { multiBackStack.removeLastOrNull() }, contentPadding = contentPadding,
             )
         }
         entry<MainNav.MyMusic> {
@@ -664,6 +671,9 @@ private sealed interface MainNav : NavKey {
     data object AlbumCollections : MainNav
 
     @Serializable
+    data object Downloads : MainNav
+
+    @Serializable
     data object Inbox : MainNav
 
     @Serializable
@@ -719,6 +729,7 @@ private fun rememberMainNavBackStack(bottom: MainNav) = rememberNavBackStack(
                     subclass(MainNav.Landing::class, MainNav.Landing.serializer())
                     subclass(MainNav.Library::class, MainNav.Library.serializer())
                     subclass(MainNav.MyMusic::class, MainNav.MyMusic.serializer())
+                    subclass(MainNav.Downloads::class, MainNav.Downloads.serializer())
                     subclass(MainNav.Inbox::class, MainNav.Inbox.serializer())
                     subclass(MainNav.AlbumCollections::class, MainNav.AlbumCollections.serializer())
                     subclass(MainNav.LibraryList::class, MainNav.LibraryList.serializer())

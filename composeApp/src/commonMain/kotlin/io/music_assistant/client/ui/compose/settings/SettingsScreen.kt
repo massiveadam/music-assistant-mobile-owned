@@ -162,7 +162,7 @@ private const val CHANGELOG_PREVIEW_LENGTH = 300
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(goHome: () -> Unit, exitApp: () -> Unit) {
+fun SettingsScreen(goHome: () -> Unit, exitApp: () -> Unit, goToDownloads: () -> Unit = {}) {
     val themeViewModel = koinViewModel<ThemeViewModel>()
     val theme = themeViewModel.theme.collectAsStateWithLifecycle(ThemeSetting.FollowSystem)
     val viewModel = koinViewModel<SettingsViewModel>()
@@ -222,6 +222,8 @@ fun SettingsScreen(goHome: () -> Unit, exitApp: () -> Unit) {
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
+                // Reachable without a server connection, so downloads play anywhere.
+                io.music_assistant.client.ui.compose.offline.OfflineDownloadsEntry(goToDownloads)
                 var ipAddress by remember { mutableStateOf(Defaults.URI) }
                 var port by remember { mutableStateOf(Defaults.PORT.toString()) }
                 var isTls by remember { mutableStateOf(false) }
