@@ -17,10 +17,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.PowerSettingsNew
+import androidx.compose.material.icons.filled.Waves
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Lyrics
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -32,6 +34,7 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,8 +48,10 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -58,6 +63,7 @@ import coil3.compose.AsyncImage
 import io.music_assistant.client.data.model.client.Player
 import io.music_assistant.client.data.model.client.PlayerData
 import io.music_assistant.client.data.model.client.PlayerDataFixtures
+import io.music_assistant.client.data.model.client.QualityTier
 import io.music_assistant.client.data.model.client.ResolvedChapter
 import io.music_assistant.client.data.model.client.items.AppMediaItem
 import io.music_assistant.client.data.model.client.items.Artist
@@ -66,11 +72,10 @@ import io.music_assistant.client.data.model.client.items.PodcastEpisode
 import io.music_assistant.client.data.model.client.items.QualityTier
 import io.music_assistant.client.data.model.client.items.Track
 import io.music_assistant.client.data.model.client.items.canBeFavorited
-import io.music_assistant.client.data.model.client.items.qualityTier
 import io.music_assistant.client.data.model.client.presentationChapter
+import io.music_assistant.client.data.model.client.qualityTier
 import io.music_assistant.client.data.model.client.toAbsoluteSeekSeconds
 import io.music_assistant.client.imageloader.rememberArtworkRequest
-import io.music_assistant.client.player.sendspin.SendspinState
 import io.music_assistant.client.ui.alphaOn
 import io.music_assistant.client.ui.compose.common.CenteredThreeSlotRow
 import io.music_assistant.client.ui.compose.common.PlayerColors
@@ -78,14 +83,18 @@ import io.music_assistant.client.ui.compose.common.action.PlayerAction
 import io.music_assistant.client.ui.compose.common.icons.AlbumIcon
 import io.music_assistant.client.ui.compose.common.icons.TrackIcon
 import io.music_assistant.client.ui.compose.common.items.ChooseArtistDialog
+import io.music_assistant.client.ui.compose.common.items.artistNavigation
 import io.music_assistant.client.ui.compose.common.painters.rememberPlaceholderPainter
 import io.music_assistant.client.ui.fadingEdges
 import io.music_assistant.client.ui.inactive
 import io.music_assistant.client.ui.theme.favoriteTint
 import io.music_assistant.client.ui.theme.textMuted
 import io.music_assistant.client.utils.formatDuration
+import io.music_assistant.sendspin.api.PlayerState
 import kotlinx.coroutines.flow.Flow
 import musicassistantclient.composeapp.generated.resources.Res
+import musicassistantclient.composeapp.generated.resources.action_go_to_artist
+import musicassistantclient.composeapp.generated.resources.cd_ambient_sound_on
 import musicassistantclient.composeapp.generated.resources.cd_favorite
 import musicassistantclient.composeapp.generated.resources.cd_lyrics
 import musicassistantclient.composeapp.generated.resources.cd_playing
@@ -114,12 +123,23 @@ fun CompactPlayerItem(
     onSelectPlayer: (() -> Unit)? = null,
     onGroupButton: (() -> Unit)? = null,
     showAdditionalControls: Boolean = false,
-    sendSpinState: SendspinState?,
-    // Server preference gate for chapter-based Next enablement.
+    sendSpinState: PlayerState?,
+    // Server preference gate for chapter-based Next enablement and the chapter subtitle.
     chapterProgressEnabled: Boolean = true,
+    livePositionFlow: Flow<Double>? = null,
 ) {
     val currentMedia = item.player.currentMedia
     val onPrimaryContainer = MaterialTheme.colorScheme.onPrimaryContainer
+    // Derived so the position tick recomposes this item only at chapter boundaries.
+    val positionState = livePositionFlow
+        ?.collectAsStateWithLifecycle(initialValue = item.queueInfo?.elapsedTime ?: 0.0)
+    val chapterName by remember(item, chapterProgressEnabled, positionState) {
+        derivedStateOf {
+            item.takeIf { chapterProgressEnabled && !it.player.isPoweredOff }
+                ?.presentationChapter(positionState?.value ?: item.queueInfo?.elapsedTime)
+                ?.displayName
+        }
+    }
 
     Row(
         modifier = modifier
@@ -150,6 +170,7 @@ fun CompactPlayerItem(
                     AsyncImage(
                         placeholder = placeholder,
                         fallback = placeholder,
+                        error = placeholder,
                         model = rememberArtworkRequest(currentMedia.imageUrl),
                         contentDescription = currentMedia.title,
                         contentScale = ContentScale.Crop,
@@ -196,7 +217,7 @@ fun CompactPlayerItem(
                 )
                 // Powered off: no subtitle line.
                 if (!poweredOff) {
-                    currentMedia?.subtitle?.let {
+                    (chapterName ?: currentMedia?.subtitle)?.let {
                         Text(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -286,6 +307,9 @@ fun FullPlayerItem(
     colors: PlayerColors,
     playerAction: (PlayerData, PlayerAction) -> Unit,
     onFavoriteClick: (AppMediaItem) -> Unit,
+    onFavoriteStreamClick: (PlayerData) -> Unit = {},
+    // See MainDataSource.canFavoriteCurrentlyPlaying: on-air song AND server support.
+    canFavoriteStream: Boolean = false,
     livePositionFlow: Flow<Double>?,
     bufferedAheadSecFlow: Flow<Double>? = null,
     lyricsAvailable: Boolean = false,
@@ -294,9 +318,13 @@ fun FullPlayerItem(
     // live outside the pager so a page change cannot tear them down mid-gesture.
     onAudioChainClick: () -> Unit = {},
     onPlaybackSpeedClick: () -> Unit = {},
+    // Null hides the ambient sound pill: the feature is unavailable for this queue.
+    onAmbientSoundClick: (() -> Unit)? = null,
     // Server preference gate for the chapter-relative timeline.
     chapterProgressEnabled: Boolean = true,
-    navigateToItem: ((AppMediaItem) -> Unit)? = null,
+    navigateToItem: (AppMediaItem) -> Unit = {},
+    // The chooser for a multi-artist track lives in the dialog host, outside the pager.
+    onChooseArtist: () -> Unit = {},
 ) {
     val currentMedia = item.player.currentMedia
     val onPrimaryContainer = MaterialTheme.colorScheme.onPrimaryContainer
@@ -327,6 +355,7 @@ fun FullPlayerItem(
                 AsyncImage(
                     placeholder = placeholder,
                     fallback = placeholder,
+                    error = placeholder,
                     model = rememberArtworkRequest(it),
                     contentDescription = currentMedia.title,
                     contentScale = ContentScale.Fit,
@@ -369,10 +398,29 @@ fun FullPlayerItem(
         val timelinePosition =
             currentChapter?.relativeSec(displayPosition.toDouble())?.toFloat() ?: displayPosition
 
+        // The artist line does the overflow's "Go to artist"; a chapter name in that line has no artist.
+        // Remembered: the position tick recomposes this item several times a second.
+        val artists = (item.queueInfo?.currentItem?.track as? Track)
+            ?.takeIf { !poweredOff && currentChapter == null }
+            ?.artists.orEmpty()
+        val onSubtitleClick = remember(artists, navigateToItem, onChooseArtist) {
+            artistNavigation(artists, navigateToItem) { onChooseArtist() }
+        }
+        val goToArtistLabel = stringResource(Res.string.action_go_to_artist)
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .clearAndSetSemantics { contentDescription = trackContentDescription },
+                .clearAndSetSemantics {
+                    contentDescription = trackContentDescription
+                    // The cleared subtree hides the line's own click, so expose it here.
+                    onSubtitleClick?.let {
+                        onClick(goToArtistLabel) {
+                        it()
+                    true
+                    }
+                    }
+                },
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
@@ -409,98 +457,29 @@ fun FullPlayerItem(
                     // marquee on a blank string builds a degenerate layer tree that overflows the
                     // RenderThread's native stack (SIGSEGV in HWUI prepareTree) — no-subtitle radios
                     // hit this. The empty Text still reserves one line; it just doesn't scroll.
-                    val currentTrackItem = item.queueInfo?.currentItem?.track as? Track
-                    val hasClickableLinks =
-                        navigateToItem != null &&
-                            currentChapter == null &&
-                            currentTrackItem != null &&
-                            (currentTrackItem.artists.isNotEmpty() || currentTrackItem.album != null)
-
-                    if (hasClickableLinks && currentTrackItem != null && navigateToItem != null) {
-                        var artistChoices by remember { mutableStateOf<List<Artist>?>(null) }
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .fadingEdges()
-                                .basicMarquee()
-                                .padding(horizontal = FULL_PLAYER_HORIZONTAL_PADDING)
-                                .alphaOn(currentMedia?.title != null),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            if (currentTrackItem.artists.isNotEmpty()) {
-                                Text(
-                                    modifier = Modifier.clickable {
-                                        if (currentTrackItem.artists.size == 1) {
-                                            navigateToItem(currentTrackItem.artists[0])
-                                        } else {
-                                            artistChoices = currentTrackItem.artists
-                                        }
-                                    },
-                                    text = currentTrackItem.artists.joinToString(", ") { it.displayName },
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = textMuted,
-                                    maxLines = 1,
-                                )
-                            }
-                            if (currentTrackItem.album != null) {
-                                if (currentTrackItem.artists.isNotEmpty()) {
-                                    Text(
-                                        text = " • ",
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        color = textMuted,
-                                    )
-                                }
-                                Text(
-                                    modifier = Modifier.clickable {
-                                        navigateToItem(currentTrackItem.album)
-                                    },
-                                    text = currentTrackItem.album.name,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = textMuted,
-                                    maxLines = 1,
-                                )
-                            }
-                        }
-                        artistChoices?.let { artists ->
-                            ChooseArtistDialog(
-                                artists = artists,
-                                onSelect = {
-                                    artistChoices = null
-                                    navigateToItem(it)
+                    // Chapter mode uses the active chapter name as the subtitle.
+                    val subtitle = currentChapter?.displayName ?: currentMedia?.subtitle
+                    Text(
+                        modifier = Modifier.fillMaxWidth()
+                            .then(onSubtitleClick?.let { Modifier.clickable(onClick = it) } ?: Modifier)
+                            .then(
+                                if (subtitle.isNullOrBlank()) {
+                                    Modifier
+                                } else {
+                                    Modifier
+                                        .fadingEdges()
+                                        .basicMarquee()
+                                        .padding(horizontal = FULL_PLAYER_HORIZONTAL_PADDING)
                                 },
-                                onDismiss = { artistChoices = null },
                             )
-                        }
-                    } else {
-                        // Always render the subtitle line so every player item keeps the same height,
-                        // even when blank. But attach `basicMarquee()` ONLY when there's real text:
-                        // marquee on a blank string builds a degenerate layer tree that overflows the
-                        // RenderThread's native stack (SIGSEGV in HWUI prepareTree) — no-subtitle radios
-                        // hit this. The empty Text still reserves one line; it just doesn't scroll.
-                        // Chapter mode uses the active chapter name as the subtitle.
-                        val subtitle = currentChapter?.displayName ?: currentMedia?.subtitle
-                        Text(
-                            modifier = Modifier.fillMaxWidth()
-                                .then(
-                                    if (subtitle.isNullOrBlank()) {
-                                        Modifier
-                                    } else {
-                                        Modifier
-                                            .fadingEdges()
-                                            .basicMarquee()
-                                            .padding(horizontal = FULL_PLAYER_HORIZONTAL_PADDING)
-                                    },
-                                )
-                                .alphaOn(currentMedia?.title != null),
-                            text = subtitle.orEmpty(), // TODO take from currentItem?
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = textMuted,
-                            textAlign = TextAlign.Center,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
+                            .alphaOn(currentMedia?.title != null),
+                        text = subtitle.orEmpty(), // TODO take from currentItem?
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
         }
@@ -590,7 +569,9 @@ fun FullPlayerItem(
                 track = { sliderState ->
                     val audiobook = item.queueInfo?.currentItem?.track as? Audiobook
                     val chapters = audiobook?.chapters
-                    Box {
+                    // Square inside corners leave a full or empty track, and the buffered band,
+                    // with a square outer end; the clip keeps both ends round.
+                    Box(modifier = Modifier.clip(CircleShape)) {
                         SliderDefaults.Track(
                             sliderState = sliderState,
                             colors = progressSliderColors,
@@ -662,6 +643,8 @@ fun FullPlayerItem(
             val isSpokenContent = currentQueueItem?.track is Audiobook ||
                     currentQueueItem?.track is PodcastEpisode
             val showSpeed = isSpokenContent && playbackSpeed != null && !poweredOff
+            val onAmbientSound = onAmbientSoundClick
+                ?.takeIf { item.queueInfo?.overlay?.enabled == true && !poweredOff }
 
             CenteredThreeSlotRow(
                 modifier = Modifier.fillMaxWidth(),
@@ -675,55 +658,63 @@ fun FullPlayerItem(
                     )
                 },
                 center = {
-                    if (showSpeed) {
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(colors.controlTint)
-                                .clickable(onClick = onPlaybackSpeedClick)
-                                .padding(horizontal = 8.dp, vertical = 2.dp),
-                        ) {
-                            Text(
-                                text = "${formatDecimal(snapSpeed(playbackSpeed), 2)}x",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = if (colors.controlTint.luminance() > 0.5f) {
-                                    Color.Black
-                                } else {
-                                    Color.White
-                                },
-                            )
-                        }
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .alpha(if (tier != null && !poweredOff) 1f else 0f)
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(
-                                    if (isLq) {
-                                        MaterialTheme.colorScheme.surfaceVariant
-                                    } else {
-                                        colors.controlTint
-                                    },
-                                )
-                                .clickable(enabled = tier != null, onClick = onAudioChainClick)
-                                .padding(horizontal = 8.dp, vertical = 2.dp),
-                        ) {
-                            Text(
-                                text = (tier ?: QualityTier.LQ).name,
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isLq) {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                } else {
-                                    if (colors.controlTint.luminance() > 0.5f) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (showSpeed) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(colors.controlTint)
+                                    .clickable(onClick = onPlaybackSpeedClick)
+                                    .padding(horizontal = 8.dp, vertical = 2.dp),
+                            ) {
+                                Text(
+                                    text = "${formatDecimal(snapSpeed(playbackSpeed), 2)}x",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (colors.controlTint.luminance() > 0.5f) {
                                         Color.Black
                                     } else {
                                         Color.White
-                                    }
-                                },
-                            )
+                                    },
+                                )
+                            }
+                        } else if ((tier != null && !poweredOff) || onAmbientSound == null) {
+                            // A hidden badge stays as an invisible placeholder that keeps the
+                            // slot height, unless the ambient pill holds the slot by itself.
+                            Box(
+                                modifier = Modifier
+                                    .alpha(if (tier != null && !poweredOff) 1f else 0f)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(
+                                        if (isLq) {
+                                            MaterialTheme.colorScheme.surfaceVariant
+                                        } else {
+                                            colors.controlTint
+                                        },
+                                    )
+                                    .clickable(enabled = tier != null, onClick = onAudioChainClick)
+                                    .padding(horizontal = 8.dp, vertical = 2.dp),
+                            ) {
+                                Text(
+                                    text = (tier ?: QualityTier.LQ).name,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isLq) {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    } else {
+                                        if (colors.controlTint.luminance() > 0.5f) {
+                                            Color.Black
+                                        } else {
+                                            Color.White
+                                        }
+                                    },
+                                )
+                            }
                         }
+                        onAmbientSound?.let { AmbientSoundPill(tint = colors.controlTint, onClick = it) }
                     }
                 },
                 end = {
@@ -764,8 +755,22 @@ fun FullPlayerItem(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (currentTrack?.canBeFavorited == true) {
-                val isFavorite = io.music_assistant.client.ui.compose.personal.personalFavorite(currentTrack)
+            if (canFavoriteStream) {
+                // Radio favourite adds the on-air song to the library; the queue's `favorite`
+                // flag is the station's, not the song's, so there is no "already favourited"
+                // state and the heart always renders un-filled.
+                IconButton(
+                    modifier = Modifier.size(favoriteSlot),
+                    onClick = { onFavoriteStreamClick(item) },
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.FavoriteBorder,
+                        contentDescription = stringResource(Res.string.cd_favorite),
+                        tint = colors.controlTint,
+                    )
+                }
+            } else if (currentTrack?.canBeFavorited == true) {
+                val isFavorite = currentTrack.favorite == true
                 IconButton(
                     modifier = Modifier.size(favoriteSlot),
                     onClick = { onFavoriteClick(currentTrack) },
@@ -849,6 +854,28 @@ private fun FullPlayerItemPoweredOffPreview() {
             playerAction = { _, _ -> },
             onFavoriteClick = {},
             livePositionFlow = null,
+        )
+    }
+}
+
+/** Shows that an ambient sound plays with the queue. Opens the ambient sound dialog. */
+@Composable
+private fun AmbientSoundPill(tint: Color, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(tint)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+    ) {
+        Icon(
+            imageVector = Icons.Default.Waves,
+            contentDescription = stringResource(Res.string.cd_ambient_sound_on),
+            // As tall as one line of the text badges, at every font scale.
+            modifier = Modifier.size(
+                with(LocalDensity.current) { MaterialTheme.typography.labelSmall.lineHeight.toDp() },
+            ),
+            tint = if (tint.luminance() > 0.5f) Color.Black else Color.White,
         )
     }
 }

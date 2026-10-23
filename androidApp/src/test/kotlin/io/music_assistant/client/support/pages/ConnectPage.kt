@@ -27,7 +27,9 @@ class ConnectPage(private val composeTestRule: ComposeTestRule, private val save
 
     fun connectWithError(message: String): ConnectPage {
         clickConnect()
-        composeTestRule.onNodeWithText(message).assertIsDisplayed()
+        composeTestRule.onNodeWithText(message)
+            .performScrollTo()
+            .assertIsDisplayed()
         return this.assertOnPage()
     }
 

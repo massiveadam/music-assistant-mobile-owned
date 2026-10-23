@@ -4,41 +4,38 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import io.music_assistant.client.api.Request
-import io.music_assistant.client.api.ServiceClient
 import io.music_assistant.client.data.MainDataSource
-import io.music_assistant.client.data.model.client.AlbumType
 import io.music_assistant.client.data.model.client.MediaType
 import io.music_assistant.client.data.model.client.QueueOption
 import io.music_assistant.client.data.model.client.SortConfig
 import io.music_assistant.client.data.model.client.SortOption
 import io.music_assistant.client.data.model.client.SubItemContext
+import io.music_assistant.client.data.model.client.clientFiltered
 import io.music_assistant.client.data.model.client.clientSorted
 import io.music_assistant.client.data.model.client.items.Album
 import io.music_assistant.client.data.model.client.items.AppMediaItem
 import io.music_assistant.client.data.model.client.items.Artist
 import io.music_assistant.client.data.model.client.items.Audiobook
 import io.music_assistant.client.data.model.client.items.Genre
+import io.music_assistant.client.data.model.client.items.MediaCollection
 import io.music_assistant.client.data.model.client.items.PlayableItem
 import io.music_assistant.client.data.model.client.items.Playlist
 import io.music_assistant.client.data.model.client.items.Podcast
 import io.music_assistant.client.data.model.client.items.PodcastEpisode
 import io.music_assistant.client.data.model.client.items.RecommendationFolder
 import io.music_assistant.client.data.model.client.items.Track
-import io.music_assistant.client.data.model.client.items.isOwnedItem
-import io.music_assistant.client.data.model.server.ProviderMapping
+import io.music_assistant.client.data.play.PlayDispatcher
+import io.music_assistant.client.data.play.PlayRequest
 import io.music_assistant.client.data.repository.MediaItemRepository
 import io.music_assistant.client.settings.SettingsRepository
 import io.music_assistant.client.ui.compose.common.DataState
-import io.music_assistant.client.ui.compose.common.map
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.async
-import kotlinx.coroutines.CancellationException
 
 class ItemDetailsViewModel(
-    private val apiClient: ServiceClient,
+    private val playDispatcher: PlayDispatcher,
     private val mainDataSource: MainDataSource,
     private val settingsRepository: SettingsRepository,
     private val mediaItemRepository: MediaItemRepository,
@@ -51,18 +48,12 @@ class ItemDetailsViewModel(
         val albumsState: DataState<List<Album>>,
         val playableItemsState: DataState<List<PlayableItem>>,
         val artistsState: DataState<List<Artist>> = DataState.Loading(),
-        /**
-         * An artist's Albums / Tracks tabs are split into Library / All sub-sections;
-         * these back the ARTIST_ALBUMS / ARTIST_TRACKS tabs instead of [albumsState] /
-         * [playableItemsState]. Null for non-artist items.
-         */
-        val artistSections: ArtistSections = ArtistSections(),
-        val canRecoverSources: Boolean = false,
-        val recoveringSources: Boolean = false,
         /** Lazily loaded on demand from the artist overflow menu; NoData until then. */
         val similarArtistsState: DataState<List<Artist>> = DataState.NoData(),
         val albumsSortOption: SortOption? = null,
         val playableItemsSortOption: SortOption? = null,
+        /** In-list text filter; null while the search field is closed, "" once opened. */
+        val playableItemsQuery: String? = null,
         /** The user's manual tab choice; null means "follow the auto-selected default". */
         val userSelectedTab: ItemDetailsTab? = null,
     ) {
@@ -87,6 +78,7 @@ class ItemDetailsViewModel(
 
     private var rawAlbums: List<Album> = emptyList()
     private var rawPlayableItems: List<PlayableItem> = emptyList()
+    private var playableItemsContext: SubItemContext? = null
 
     fun onTabSelected(tab: ItemDetailsTab) {
         _state.update { it.copy(userSelectedTab = tab) }
@@ -151,6 +143,7 @@ class ItemDetailsViewModel(
             MediaType.PODCAST -> Request.Podcast.get(itemId, providerId)
             MediaType.AUDIOBOOK -> Request.Audiobook.get(itemId, providerId)
             MediaType.GENRE -> Request.Genre.get(itemId, providerId)
+            MediaType.COLLECTION -> Request.Audiobook.getCollection(itemId)
             else -> return null
         }
 
@@ -160,18 +153,10 @@ class ItemDetailsViewModel(
     private fun loadSubItems(item: AppMediaItem) {
         when (item) {
             is Artist -> {
-                _state.update {
-                    it.copy(
-                        albumsState = DataState.NoData(),
-                        playableItemsState = DataState.NoData(),
-                        artistSections = ArtistSections.loading(),
-                        albumsSortOption = settingsRepository.getSortOption(SubItemContext.ARTIST_ALBUMS),
-                        playableItemsSortOption = settingsRepository.getSortOption(SubItemContext.ARTIST_TRACKS),
-                    )
-                }
-                loadArtistAlbumSections(item)
-                // Similar artists load only when their sheet is opened. They must
-                // not compete with the visible discography for provider quotas.
+                // Prefetch similar artists in the background so the sheet opens warm: the server's
+                // first per-artist lookup (lastfm + matching) is the slow part, so we pay it while
+                // the user browses albums/tracks rather than on the menu tap.
+                loadSimilarArtists()
             }
 
             is Album -> {
@@ -218,6 +203,18 @@ class ItemDetailsViewModel(
                 loadGenreOverview(item.itemId, item.provider)
             }
 
+            // get_collection already carries the books, so there is nothing more to load.
+            is MediaCollection -> {
+                _state.update {
+                    it.copy(
+                        albumsState = DataState.NoData(),
+                        albumsSortOption = null,
+                        playableItemsSortOption = null,
+                    )
+                }
+                setPlayableItems(item.items.filterIsInstance<PlayableItem>(), SubItemContext.COLLECTION_ITEMS)
+            }
+
             is Audiobook -> {
                 _state.update {
                     it.copy(
@@ -243,176 +240,24 @@ class ItemDetailsViewModel(
         }
     }
 
-    private suspend fun fetchArtistItems(request: Request): List<AppMediaItem> =
-        mediaItemRepository.fetchMediaItems(request).getOrNull() ?: emptyList()
-
-    fun recoverSources() {
-        val artist = _state.value.itemOrNull() as? Artist ?: return
-        if (_state.value.recoveringSources || !_state.value.canRecoverSources) return
-        _state.update { it.copy(recoveringSources = true) }
-        viewModelScope.launch {
-            try {
-                val groups = mediaItemRepository.fetchAlbumGroups(artist.itemId, artist.provider, recover = true).getOrNull()
-                if (_state.value.itemOrNull()?.uri != artist.uri) return@launch
-                _state.update { current -> current.copy(artistSections = current.artistSections.copy(
-                    discography = groups?.let { DataState.Data(it) } ?: current.artistSections.discography,
-                    incompleteAlbums = groups == null || groups.unavailableSources.isNotEmpty() || groups.unlinkedSources.isNotEmpty(),
-                )) }
-            } finally { _state.update { it.copy(recoveringSources = false) } }
-        }
-    }
-
-    private fun loadArtistAlbumSections(artist: Artist) {
-        viewModelScope.launch {
-            val canRecover = mediaItemRepository.supportsSourceRecovery()
-            _state.update { it.copy(canRecoverSources = canRecover) }
-            fun show(groups: MediaItemRepository.AlbumGroups, pending: Boolean = false) {
-                fun section(items: List<Album>) = DataState.Data(Section(items))
-                _state.update { current -> current.copy(artistSections = current.artistSections.copy(
-                    discography = DataState.Data(groups), library = section(groups.owned),
-                    albums = section(groups.all), all = section(groups.all),
-                    eps = section(groups.all.filter { it.albumType == AlbumType.EP }),
-                    singles = section(groups.all.filter { it.albumType == AlbumType.SINGLE }),
-                    incompleteAlbums = pending || groups.unavailableSources.isNotEmpty() || groups.unlinkedSources.isNotEmpty(),
-                )) }
-            }
-            val fast = mediaItemRepository.supportsInteractiveReads()
-            val full = async { mediaItemRepository.fetchAlbumGroups(artist.itemId, artist.provider) }
-            val local = if (fast) mediaItemRepository.fetchAlbumGroups(artist.itemId, artist.provider, true)
-                .getOrNull()?.takeIf { it.all.isNotEmpty() } else null
-            if (local != null) show(local, pending = true)
-            val groups = full.await().getOrNull()
-            if (groups != null) show(groups)
-            else if (local == null) _state.update { current -> current.copy(artistSections = current.artistSections.copy(
-                discography = DataState.Error(), library = DataState.Error(), albums = DataState.Error(),
-                all = DataState.Error(), eps = DataState.Error(), singles = DataState.Error(), incompleteAlbums = true,
-            )) }
-        }
-
-        viewModelScope.launch {
-            val list = ItemUseCases.fetchArtistItemsAcrossProviders<Track>(
-                mediaItemRepository,
-                artist,
-            ) { itemId, providerInstance ->
-                Request.Artist.getTopTracks(
-                    itemId,
-                    providerInstance,
-                )
-            }
-
-            if (list != null) {
-                _state.update {
-                    it.copy(
-                        artistSections = it.artistSections.copy(
-                            topTracks = DataState.Data(
-                                Section(
-                                    list.items.take(ARTIST_SECTION_LIMIT),
-                                    providerDomain = list.mapping.providerDomain,
-                                    itemList = ItemList.ArtistTopTracks(
-                                        list.mapping.providerInstance,
-                                        list.mapping.itemId,
-                                    ),
-                                ),
-                            ),
-                        ),
-                    )
-                }
-            } else {
-                _state.update {
-                    it.copy(
-                        artistSections = it.artistSections.copy(
-                            topTracks = DataState.Error(),
-                        ),
-                    )
-                }
-            }
-        }
-    }
-
-    fun loadAlbumsForProvider(mapping: ProviderMapping) {
-        viewModelScope.launch {
-            val itemId = mapping.itemId
-            val providerInstance = mapping.providerInstance
-
-            val albums = fetchArtistItems(
-                Request.Artist.getAlbums(
-                    itemId,
-                    providerInstance,
-                ),
-            ).filterIsInstance<Album>()
-
-            _state.update {
-                val sec = DataState.Data(
-                    Section(
-                        albums.take(ARTIST_SECTION_LIMIT),
-                        providerDomain = mapping.providerDomain,
-                        itemList = ItemList.ArtistAlbums(providerInstance, itemId),
-                    ),
-                )
-                it.copy(
-                    artistSections = it.artistSections.copy(
-                        albums = sec,
-                        all = sec,
-                    ),
-                )
-            }
-        }
-    }
-
-    fun loadTopTracksForProvider(mapping: ProviderMapping) {
-        viewModelScope.launch {
-            val itemId = mapping.itemId
-            val providerInstance = mapping.providerInstance
-
-            val tracks = fetchArtistItems(
-                Request.Artist.getTopTracks(
-                    itemId,
-                    providerInstance,
-                ),
-            ).filterIsInstance<Track>()
-
-            _state.update {
-                it.copy(
-                    artistSections = it.artistSections.copy(
-                        topTracks = DataState.Data(
-                            Section(
-                                tracks.take(ARTIST_SECTION_LIMIT),
-                                providerDomain = mapping.providerDomain,
-                                itemList = ItemList.ArtistTopTracks(providerInstance, itemId),
-                            ),
-                        ),
-                    ),
-                )
-            }
-        }
-    }
-
     private fun loadAlbumTracks(itemId: String, provider: String) {
         viewModelScope.launch {
             _state.update { it.copy(playableItemsState = DataState.Loading()) }
 
-            fun show(tracks: List<Track>) {
-                rawPlayableItems = tracks
-                val sort = _state.value.playableItemsSortOption ?: SortConfig.defaultFor(SubItemContext.ALBUM_TRACKS)
-                _state.update { it.copy(playableItemsState = DataState.Data(tracks.clientSorted(sort, SubItemContext.ALBUM_TRACKS))) }
-            }
-            var stored: List<Track> = emptyList()
             try {
-                val full = async { mediaItemRepository.fetchMediaItems(Request.Album.getTracks(itemId, provider)) }
-                if (provider == "library" && mediaItemRepository.supportsInteractiveReads()) {
-                    stored = mediaItemRepository.fetchMediaItems(Request.Album.getTracks(itemId, provider, true))
-                        .getOrNull()?.filterIsInstance<Track>().orEmpty()
-                    if (stored.isNotEmpty()) show(stored)
-                }
-                val response = full.await()
-                val tracks = response.getOrNull()?.filterIsInstance<Track>()
-                if (tracks != null && (tracks.isNotEmpty() || stored.isEmpty())) show(tracks)
-                else if (stored.isEmpty()) _state.update { it.copy(playableItemsState = DataState.Error()) }
-            } catch (e: CancellationException) {
-                throw e
+                val tracks = mediaItemRepository.fetchMediaItems(
+                    Request.Album.getTracks(
+                        itemId = itemId,
+                        providerInstanceIdOrDomain = provider,
+                    ),
+                ).getOrNull()
+                    ?.filterIsInstance<Track>()
+                    ?: emptyList()
+
+                setPlayableItems(tracks, SubItemContext.ALBUM_TRACKS)
             } catch (e: Exception) {
                 Logger.e("Failed to load album tracks", e)
-                if (stored.isEmpty()) _state.update { it.copy(playableItemsState = DataState.Error()) }
+                _state.update { it.copy(playableItemsState = DataState.Error()) }
             }
         }
     }
@@ -436,20 +281,7 @@ class ItemDetailsViewModel(
                     ?.filterIsInstance<PlayableItem>()
                     ?: emptyList()
 
-                rawPlayableItems = tracks
-                val sort = _state.value.playableItemsSortOption ?: SortConfig.defaultFor(
-                    SubItemContext.PLAYLIST_ITEMS,
-                )
-                _state.update {
-                    it.copy(
-                        playableItemsState = DataState.Data(
-                            tracks.clientSorted(
-                                sort,
-                                SubItemContext.PLAYLIST_ITEMS,
-                            ),
-                        ),
-                    )
-                }
+                setPlayableItems(tracks, SubItemContext.PLAYLIST_ITEMS)
             } catch (e: Exception) {
                 Logger.e("Failed to load playlist tracks", e)
                 _state.update { it.copy(playableItemsState = DataState.Error()) }
@@ -471,19 +303,7 @@ class ItemDetailsViewModel(
                     ?.filterIsInstance<PodcastEpisode>()
                     ?: emptyList()
 
-                rawPlayableItems = episodes
-                val sort = _state.value.playableItemsSortOption ?: SortConfig.defaultFor(
-                    SubItemContext.PODCAST_EPISODES,
-                )
-                _state.update {
-                    it.copy(
-                        playableItemsState = DataState.Data(
-                            episodes.clientSorted(
-                                sort,
-                            ),
-                        ),
-                    )
-                }
+                setPlayableItems(episodes, SubItemContext.PODCAST_EPISODES)
             } catch (e: Exception) {
                 Logger.e("Failed to load podcast episodes", e)
                 _state.update { it.copy(playableItemsState = DataState.Error()) }
@@ -582,45 +402,40 @@ class ItemDetailsViewModel(
             Pair(item, null)
         }
 
-        viewModelScope.launch {
-            val mediaUri = itemToPlay.mediaUri ?: return@launch
-            mainDataSource.selectedPlayer?.queueOrPlayerId?.let { queueId ->
-                Logger.withTag("PlayDispatch").i {
-                    "ItemDetailsViewModel.onPlayClick: uri=$mediaUri option=$option " +
-                            "endlessMix=$endlessMix startItem=${startItem?.itemId} queue=$queueId"
-                }
-                apiClient.sendRequest(
-                    Request.Library.play(
-                        item = itemToPlay,
-                        queueOrPlayerId = queueId,
-                        option = option,
-                        endlessMixMode = endlessMix && item !is Genre,
-                        startItem = startItem?.itemId,
-                    ),
-                )
+        val mediaUri = itemToPlay.mediaUri ?: return
+        mainDataSource.selectedPlayer?.queueOrPlayerId?.let { queueId ->
+            Logger.withTag("PlayDispatch").i {
+                "ItemDetailsViewModel.onPlayClick: uri=$mediaUri option=$option " +
+                        "endlessMix=$endlessMix startItem=${startItem?.itemId} queue=$queueId"
             }
+            playDispatcher.play(
+                PlayRequest(
+                    queueOrPlayerId = queueId,
+                    media = listOf(mediaUri),
+                    option = option,
+                    endlessMixMode = endlessMix && item !is Genre,
+                    startItem = startItem?.itemId,
+                ),
+            )
         }
     }
 
     fun onChapterClick(chapterPosition: Int) {
         (_state.value.itemState as? DataState.Data)?.data?.let { item ->
-            viewModelScope.launch {
-                item.uri?.let { uri ->
-                    mainDataSource.selectedPlayer?.queueOrPlayerId?.let { queueId ->
-                        Logger.withTag("PlayDispatch").i {
-                            "ItemDetailsViewModel.onChapterClick: uri=$uri " +
-                                    "chapter=$chapterPosition queue=$queueId"
-                        }
-                        apiClient.sendRequest(
-                            Request.Library.play(
-                                media = listOf(uri),
-                                queueOrPlayerId = queueId,
-                                option = QueueOption.REPLACE,
-                                endlessMixMode = false,
-                                startItem = chapterPosition.toString(),
-                            ),
-                        )
+            item.uri?.let { uri ->
+                mainDataSource.selectedPlayer?.queueOrPlayerId?.let { queueId ->
+                    Logger.withTag("PlayDispatch").i {
+                        "ItemDetailsViewModel.onChapterClick: uri=$uri " +
+                                "chapter=$chapterPosition queue=$queueId"
                     }
+                    playDispatcher.play(
+                        PlayRequest(
+                            queueOrPlayerId = queueId,
+                            media = listOf(uri),
+                            option = QueueOption.REPLACE,
+                            startItem = chapterPosition.toString(),
+                        ),
+                    )
                 }
             }
         }
@@ -628,17 +443,34 @@ class ItemDetailsViewModel(
 
     fun onPlayableItemsSortChanged(context: SubItemContext, sortOption: SortOption) {
         settingsRepository.setSortOption(context, sortOption)
-        _state.update { st ->
-            st.copy(
-                playableItemsSortOption = sortOption,
-                playableItemsState = DataState.Data(
-                    rawPlayableItems.clientSorted(
-                        sortOption,
-                        context,
-                    ),
-                ),
-            )
-        }
+        _state.update { it.copy(playableItemsSortOption = sortOption) }
+        publishPlayableItems()
+    }
+
+    /** null closes the filter and shows the full list again; any string filters live. */
+    fun onPlayableItemsQueryChanged(query: String?) {
+        _state.update { it.copy(playableItemsQuery = query) }
+        publishPlayableItems()
+    }
+
+    private fun setPlayableItems(items: List<PlayableItem>, context: SubItemContext) {
+        rawPlayableItems = items
+        playableItemsContext = context
+        publishPlayableItems()
+    }
+
+    /**
+     * Single derivation of the visible list: raw → filter → sort. Every input change (load, sort,
+     * query, item update) funnels through here so the three never drift apart.
+     */
+    private fun publishPlayableItems() {
+        val context = playableItemsContext ?: return
+        val st = _state.value
+        val sort = st.playableItemsSortOption ?: SortConfig.defaultFor(context)
+        val visible = rawPlayableItems
+            .clientFiltered(st.playableItemsQuery.orEmpty())
+            .clientSorted(sort, context)
+        _state.update { it.copy(playableItemsState = DataState.Data(visible)) }
     }
 
     // Bypasses the server's playlist-tracks cache, which is the only way to make a
@@ -664,24 +496,6 @@ class ItemDetailsViewModel(
             }
 
             is Album -> {
-                _state.value.artistSections.let { sections ->
-                    _state.update { s ->
-                        s.copy(
-                            artistSections = sections.copy(
-                                albums = sections.albums.map { it.copy(items = it.items.replacing(changed)) },
-                                eps = sections.eps.map { it.copy(items = it.items.replacing(changed)) },
-                                singles = sections.singles.map { it.copy(items = it.items.replacing(changed)) },
-                                library = sections.albums.map { it.copy(items = it.items.replacing(changed)) },
-                                libraryEps = sections.eps.map { it.copy(items = it.items.replacing(changed)) },
-                                librarySingles = sections.singles.map { it.copy(items = it.items.replacing(changed)) },
-                                all = sections.albums.map { it.copy(items = it.items.replacing(changed)) },
-                                allEps = sections.eps.map { it.copy(items = it.items.replacing(changed)) },
-                                allSingles = sections.singles.map { it.copy(items = it.items.replacing(changed)) },
-                            ),
-                        )
-                    }
-                }
-
                 val albumsData = (_state.value.albumsState as? DataState.Data)?.data ?: return
                 val updated = albumsData.map { if (it.itemId == changed.itemId) changed else it }
                 rawAlbums = rawAlbums.map { if (it.itemId == changed.itemId) changed else it }
@@ -689,29 +503,11 @@ class ItemDetailsViewModel(
             }
 
             is PlayableItem -> {
-                if (changed is Track) {
-                    _state.value.artistSections.let { sections ->
-                        _state.update { s ->
-                            s.copy(
-                                artistSections = sections.copy(
-                                    topTracks = sections.topTracks.map {
-                                        it.copy(items = it.items.replacing(changed))
-                                    },
-                                ),
-                            )
-                        }
-                    }
-                }
-
-                val tracksData =
-                    (_state.value.playableItemsState as? DataState.Data)?.data ?: return
-                val updated = tracksData.map { existing ->
-                    if (existing.itemId == changed.itemId) changed else existing
-                }
+                if (_state.value.playableItemsState !is DataState.Data) return
                 rawPlayableItems = rawPlayableItems.map { existing ->
                     if (existing.itemId == changed.itemId) changed else existing
                 }
-                _state.update { it.copy(playableItemsState = DataState.Data(updated)) }
+                publishPlayableItems()
             }
 
             else -> Unit
@@ -736,11 +532,12 @@ private fun ItemDetailsViewModel.State.itemOrNull(): AppMediaItem? = when (itemS
  */
 private fun ItemDetailsTab.subState(
     state: ItemDetailsViewModel.State,
-): DataState<out List<Any>> = when (this) {
+): DataState<List<Any>> = when (this) {
     ItemDetailsTab.GENRE_ALBUMS -> state.albumsState
     ItemDetailsTab.ALBUM_TRACKS,
     ItemDetailsTab.PLAYLIST_ITEMS,
     ItemDetailsTab.PODCAST_EPISODES,
+    ItemDetailsTab.COLLECTION_ITEMS,
         -> state.playableItemsState
 
     ItemDetailsTab.GENRE_ARTISTS -> state.artistsState
@@ -748,62 +545,8 @@ private fun ItemDetailsTab.subState(
         DataState.Data((state.itemOrNull() as? Audiobook)?.chapters.orEmpty())
 }
 
-private fun DataState<out List<*>>.hasItems(): Boolean = when (this) {
+private fun DataState<List<*>>.hasItems(): Boolean = when (this) {
     is DataState.Data -> data.isNotEmpty()
     is DataState.Stale -> data.isNotEmpty()
     else -> false
 }
-
-data class ArtistSections(
-    val discography: DataState<MediaItemRepository.AlbumGroups> = DataState.Loading(),
-    val library: DataState<Section<Album>> = DataState.Loading(),
-    val libraryEps: DataState<Section<Album>> = DataState.Loading(),
-    val librarySingles: DataState<Section<Album>> = DataState.Loading(),
-    val topTracks: DataState<Section<Track>> = DataState.Loading(),
-    val incompleteAlbums: Boolean = false,
-    val albums: DataState<Section<Album>> = library,
-    val eps: DataState<Section<Album>> = libraryEps,
-    val singles: DataState<Section<Album>> = librarySingles,
-    val all: DataState<Section<Album>> = albums,
-    val allEps: DataState<Section<Album>> = eps,
-    val allSingles: DataState<Section<Album>> = singles,
-) {
-    companion object {
-        fun loading() =
-            ArtistSections(
-                albums = DataState.Loading(),
-                eps = DataState.Loading(),
-                singles = DataState.Loading(),
-                topTracks = DataState.Loading(),
-                library = DataState.Loading(),
-                libraryEps = DataState.Loading(),
-                librarySingles = DataState.Loading(),
-                all = DataState.Loading(),
-                allEps = DataState.Loading(),
-                allSingles = DataState.Loading(),
-            )
-
-        fun error() = ArtistSections(
-            discography = DataState.Error(),
-            albums = DataState.Error(),
-            eps = DataState.Error(),
-            singles = DataState.Error(),
-            topTracks = DataState.Error(),
-            library = DataState.Error(),
-            libraryEps = DataState.Error(),
-            librarySingles = DataState.Error(),
-            all = DataState.Error(),
-            allEps = DataState.Error(),
-            allSingles = DataState.Error(),
-        )
-    }
-}
-
-data class Section<T : AppMediaItem>(
-    val items: List<T>,
-    val itemList: ItemList? = null,
-    val providerDomain: String? = null,
-)
-
-private fun <T : AppMediaItem> List<T>.replacing(changed: T): List<T> =
-    map { if (it.itemId == changed.itemId) changed else it }

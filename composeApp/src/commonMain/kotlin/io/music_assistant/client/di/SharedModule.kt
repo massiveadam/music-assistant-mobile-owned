@@ -8,24 +8,33 @@ import io.music_assistant.client.auth.AuthCoordinator
 import io.music_assistant.client.auth.AuthenticationManager
 import io.music_assistant.client.connection.ConnectionManager
 import io.music_assistant.client.data.CarDspApplier
-import io.music_assistant.client.data.LocalPlayerController
+import io.music_assistant.client.data.LocalPlayerAdapter
+import io.music_assistant.client.data.LocalPlayerEndpoints
 import io.music_assistant.client.data.MainDataSource
 import io.music_assistant.client.data.PlayerPositionTracker
 import io.music_assistant.client.data.PlayerRequestFactory
 import io.music_assistant.client.data.UserPreferences
+import io.music_assistant.client.data.announcement.AnnouncementRepository
 import io.music_assistant.client.data.factory.MediaItemFactory
 import io.music_assistant.client.data.factory.PlayerFactory
 import io.music_assistant.client.data.factory.QueueFactory
+import io.music_assistant.client.data.play.PlayDispatcher
 import io.music_assistant.client.data.repository.AiRadioRepository
 import io.music_assistant.client.data.repository.MediaItemRepository
-import io.music_assistant.client.imageloader.ImageCacheInvalidator
+import io.music_assistant.client.data.repository.QueueOverlayRepository
+import io.music_assistant.client.data.repository.ServiceClientMediaItemRepository
+import io.music_assistant.client.imageloader.ArtworkDiskStore
+import io.music_assistant.client.imageloader.ArtworkRepository
+import io.music_assistant.client.imageloader.ArtworkTransport
+import io.music_assistant.client.imageloader.KtorArtworkTransport
+import io.music_assistant.client.imageloader.buildArtworkDiskCache
+import io.music_assistant.client.imageloader.toArtworkLoaderPlatformContext
 import io.music_assistant.client.input.VolumeButtonService
 import io.music_assistant.client.logging.LogSharer
-import io.music_assistant.client.player.MediaPlayerController
-import io.music_assistant.client.player.sendspin.SendspinClientFactory
-import io.music_assistant.client.player.sendspin.identity.SendspinKeyStore
-import io.music_assistant.client.player.sendspin.identity.SettingsSendspinKeyStore
+import io.music_assistant.client.player.MediaSessionBridge
+import io.music_assistant.client.player.PlatformContext
 import io.music_assistant.client.settings.SettingsRepository
+import io.music_assistant.client.settings.SettingsSendspinKeyStore
 import io.music_assistant.client.settings.provideSecretSettings
 import io.music_assistant.client.settings.provideSettings
 import io.music_assistant.client.ui.BackgroundRestrictionViewModel
@@ -36,20 +45,30 @@ import io.music_assistant.client.ui.compose.common.providers.MdiCodepoints
 import io.music_assistant.client.ui.compose.common.viewmodel.ActionsViewModel
 import io.music_assistant.client.ui.compose.home.HomeScreenViewModel
 import io.music_assistant.client.ui.compose.home.players.DspSettingsViewModel
+import io.music_assistant.client.ui.compose.home.players.QueueDjViewModel
 import io.music_assistant.client.ui.compose.item.ItemDetailsViewModel
 import io.music_assistant.client.ui.compose.item.ItemListViewModel
 import io.music_assistant.client.ui.compose.item.ViewModeViewModel
+import io.music_assistant.client.ui.compose.item.artist.ArtistDetailsViewModel
 import io.music_assistant.client.ui.compose.library.AiRadioViewModel
 import io.music_assistant.client.ui.compose.library.BrowseViewModel
 import io.music_assistant.client.ui.compose.library.LibraryCategoriesViewModel
 import io.music_assistant.client.ui.compose.library.LibraryListViewModel
+import io.music_assistant.client.ui.compose.provider.ProviderViewModel
 import io.music_assistant.client.ui.compose.search.SearchViewModel
 import io.music_assistant.client.ui.compose.settings.CarActionsViewModel
 import io.music_assistant.client.ui.compose.settings.CarDspViewModel
 import io.music_assistant.client.ui.compose.settings.DefaultClickActionsViewModel
 import io.music_assistant.client.ui.compose.settings.SettingsViewModel
 import io.music_assistant.client.ui.theme.ThemeViewModel
+import io.music_assistant.client.utils.LocalNetworkPermissionGate
 import io.music_assistant.client.utils.NetworkMonitor
+import io.music_assistant.client.utils.appVersion
+import io.music_assistant.client.utils.currentTimeMillis
+import io.music_assistant.sendspin.api.SendspinKeyStore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import org.koin.core.module.dsl.bind
 import org.koin.core.module.dsl.singleOf
 import org.koin.core.module.dsl.viewModelOf
@@ -74,10 +93,30 @@ fun sharedModule(
         single(named(SECRETS)) { provideSecretSettings() }
         single { SettingsRepository(get(), get(named(SECRETS))) }
         singleOf(::NetworkMonitor)
+        single { appVersion(get()) }        // Singleton - fixed for the process lifetime
+        singleOf(::LocalNetworkPermissionGate)
         singleOf(::ErrorMessageBus)
         singleOf(::DeepLinkBus)
         singleOf(::VolumeButtonService)
-        singleOf(::ImageCacheInvalidator)
+        single<ArtworkDiskStore> {
+            ArtworkDiskStore(
+                cache = buildArtworkDiskCache(toArtworkLoaderPlatformContext(get<PlatformContext>())),
+            )
+        }
+        single<ArtworkTransport> {
+            KtorArtworkTransport(
+                httpClient = get(named("webrtcHttpClient")),
+                serviceClient = get(),
+            )
+        }
+        single<ArtworkRepository> {
+            ArtworkRepository(
+                store = get(),
+                transport = get(),
+                serviceClient = get(),
+                now = { currentTimeMillis() },
+            )
+        }
         singleOf(serviceClientConstructor) { bind<ServiceClient>() }
         singleOf(::LogSharer)
         single(createdAtStart = true) {
@@ -94,15 +133,15 @@ fun sharedModule(
         }  // Eager - needs to start monitoring immediately
         // Expose the AuthCoordinator surface for viewmodels; same singleton instance.
         single<AuthCoordinator> { get<AuthenticationManager>() }
-        singleOf(::MediaPlayerController)  // Used by the local (Sendspin) player sink
-        singleOf(::SendspinClientFactory)   // Factory for creating Sendspin clients
+        single { MediaSessionBridge() }
         // Sendspin encrypted-protocol identity/trust persistence — the same
         // app settings storage as everything else.
         single<SendspinKeyStore> { SettingsSendspinKeyStore(get()) }
         single { PlayerPositionTracker() }  // Shared live-position source of truth
         single { UserPreferences() }        // Server-synced `auth/me` preferences
         singleOf(::PlayerRequestFactory)    // Pure PlayerAction → Request mapper
-        singleOf(::LocalPlayerController)    // Local player: lifecycle + state + commands
+        single { LocalPlayerEndpoints(get(), get(), CoroutineScope(SupervisorJob() + Dispatchers.Default)) }
+        singleOf(::LocalPlayerAdapter)      // Local player: app side of the Sendspin module
         single { io.music_assistant.client.api.PersonalApi(get()) }
         // Offline downloads need platform storage and a local player (Android); else unsupported.
         single<io.music_assistant.client.offline.OfflineMusic> {
@@ -119,11 +158,32 @@ fun sharedModule(
         }
         single { io.music_assistant.client.data.repository.PersonalMusicRepository(get(), errorBus = get()) }
         single { MediaItemFactory(get(), get()) } // private saves overlay
-        // singleOf(::MediaItemFactory)        // Stateless DTO → domain mapper
         singleOf(::PlayerFactory)           // Stateless DTO → domain mapper
         singleOf(::QueueFactory)            // Stateless DTO → domain mapper (depends on MediaItemFactory)
-        single { MediaItemRepository(get(), get(), get()) }     // Server DTO/event → client model boundary for UI
-        singleOf(::AiRadioRepository)       // Optional ai_radio plugin: list and run stations
+        single { AiRadioRepository(get(), get()) } // Optional ai_radio plugin: list and run stations
+        single {                            // Typed and spoken announcements; outlives the dialog
+            AnnouncementRepository(
+                apiClient = get(),
+                httpClient = get(named("webrtcHttpClient")),
+                microphone = get(),
+                errorBus = get(),
+                scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+            )
+        }
+        single {                            // Queue ambient sound overlay; Apply outlives the dialog
+            QueueOverlayRepository(
+                apiClient = get(),
+                mediaItemFactory = get(),
+                scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+            )
+        }
+        single {                            // Sole play_media sender; requests outlive the screen
+            PlayDispatcher(
+                apiClient = get(),
+                scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+            )
+        }
+        single<MediaItemRepository> { ServiceClientMediaItemRepository(get(), get(), get()) }
         singleOf(::MainDataSource)          // Singleton - held by foreground service
         single(createdAtStart = true) {     // Eager - must observe car edges from launch
             CarDspApplier(get(), get(), get(), get())
@@ -133,8 +193,8 @@ fun sharedModule(
         viewModelOf(::ThemeViewModel)
         factory { BackgroundRestrictionViewModel(get(), get(), get()) }
         factory { SchemaVersionWarningViewModel(get()) }
-        factory { ActionsViewModel(get(), get(), get()) }
-        factory { SettingsViewModel(get(), get(), get()) }
+        factory { ActionsViewModel(get(), get(), get(), get()) }
+        factory { SettingsViewModel(get(), get(), get(), get(), get()) }
         factory { DefaultClickActionsViewModel(get()) }
         factory { CarActionsViewModel(get(), get()) }
         factory { CarDspViewModel(get(), get()) }
@@ -146,7 +206,7 @@ fun sharedModule(
             )
         }
         factory { LibraryCategoriesViewModel(get(), get()) }
-        factory { params -> LibraryListViewModel(params[0], get(), get(), get(), get()) }
+        factory { params -> LibraryListViewModel(params[0], get(), get(), get(), get(), get()) }
         factory { params -> BrowseViewModel(params.getOrNull<String>(), get(), get(), get()) }
         factory { params ->
             ItemDetailsViewModel(
@@ -159,11 +219,16 @@ fun sharedModule(
                 params[2],
             )
         }
+        factory { params ->
+            ArtistDetailsViewModel(params[0], get(), get())
+        }
         factory { ViewModeViewModel(get()) }
-        factory { params -> ItemListViewModel(params[0], get()) }
+        factory { params -> ItemListViewModel(params[0], get(), get()) }
         factory { DspSettingsViewModel(get()) }
-        factory { HomeScreenViewModel(get(), get(), get(), get()) }
+        factory { QueueDjViewModel(get(), get<MainDataSource>().aiRadioQueueDjAvailable) }
+        factory { HomeScreenViewModel(get(), get(), get(), get(), get()) }
         factory { SearchViewModel(get(), get(), get()) }
+        factory { ProviderViewModel(get()) }
     }
 
 /**

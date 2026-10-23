@@ -65,6 +65,22 @@ internal class FakeMediaItemStore {
             .filter { !topOnly || topTracks[artist.globalId()]?.contains(it.itemId) ?: false }
     }
 
+    /**
+     * Mirrors the server's library listing: the top tracks of every provider artist matched to
+     * the library artist, narrowed to one provider instance by [providerFilter].
+     */
+    fun getTopTracksByLibraryArtist(libraryId: String, providerFilter: String?): List<ServerMediaItem> {
+        return libraryIds.entries
+            .filter { it.value == libraryId }
+            .map { it.key }
+            .filter { (instance, _) -> providerFilter == null || instance == providerFilter }
+            .flatMap { globalId ->
+                mediaItems.filter { it.mediaType == MediaType.ARTIST.serverValue && it.globalId() == globalId }
+            }
+            .flatMap { getTracksByArtist(it, topOnly = true) }
+            .distinct()
+    }
+
     fun addItems(vararg items: ServerMediaItem) {
         val itemsToAdd = items.toList()
         itemsToAdd.forEach { item ->
@@ -103,9 +119,11 @@ internal class FakeMediaItemStore {
             MediaType.PODCAST_EPISODE -> Unit
             MediaType.GENRE -> Unit
             MediaType.FOLDER -> Unit
+            MediaType.COLLECTION -> Unit
             MediaType.FLOW_STREAM -> Unit
             MediaType.ANNOUNCEMENT -> Unit
             MediaType.SOUND_EFFECT -> Unit
+            MediaType.AUDIO_SOURCE -> Unit
             MediaType.UNKNOWN -> Unit
             null -> Unit
         }

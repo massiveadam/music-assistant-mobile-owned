@@ -3,6 +3,53 @@ import MediaPlayer
 import AVFoundation
 import ComposeApp
 
+/// App-only loader shared by Now Playing and CarPlay. Kotlin resolves the fresh
+/// repository token first; only then can this loader probe the versioned decoded cache.
+/// A cache hit completes without downloading bytes or decoding NSData.
+struct NativeArtworkLoader {
+    @discardableResult
+    static func loadArtwork(
+        urlString: String,
+        completion: @escaping (UIImage?) -> Void
+    ) -> ComposeApp.Cancellable {
+        var cachedImage: UIImage?
+        return KmpHelper.shared.loadArtwork(
+            urlString: urlString,
+            cachedVersion: { token in
+                guard let image = NativeArtworkImageCache.shared.image(for: token.cacheKey) else {
+                    return false
+                }
+                cachedImage = image
+                return true
+            },
+            completion: { result in
+                if let cachedImage {
+                    completion(cachedImage)
+                    return
+                }
+                guard let result else {
+                    completion(nil)
+                    return
+                }
+                let payload = NativeArtworkPayload(
+                    data: result.data as Data,
+                    mimeType: result.mimeType,
+                    token: result.token
+                )
+                let image = NativeArtworkDecoder.decode(
+                    payload,
+                    decode: { UIImage(data: $0) },
+                    invalidate: { KmpHelper.shared.invalidateArtwork(token: $0) }
+                )
+                if let image, result.reusable {
+                    NativeArtworkImageCache.shared.insert(image, for: result.token.cacheKey)
+                }
+                completion(image)
+            }
+        )
+    }
+}
+
 /// Owns every write to Apple's system-media surfaces (Control Center, lock
 /// screen, CarPlay's now-playing state) by subscribing to the three Kotlin
 /// now-playing channels: track metadata, transport anchors, and queue modes.
@@ -54,7 +101,7 @@ final class NowPlayingCoordinator {
         return "Info center assign: \(info.count) keys title=\(title) rate=\(rate) elapsed=\(elapsed)"
     }
 
-    private var commandHandler: CommandHandler?
+    private let commandHandler = RemoteCommandHandlerStore<CommandHandler?>(nil)
 
     // MARK: - Channel subscriptions
 
@@ -73,11 +120,7 @@ final class NowPlayingCoordinator {
     /// The previous track's metadata stays on screen until the art is ready.
     private var artworkWaitTrackId: String?
 
-    /// One-entry artwork cache keyed by URL, so a same-art track change
-    /// (album playback) presents instantly without a refetch.
-    private var cachedArtworkUrl: String?
-    private var cachedArtwork: MPMediaItemArtwork?
-    private var currentArtworkLoad: Cancellable?
+    private var currentArtworkLoad: ComposeApp.Cancellable?
 
     /// Identifies the newest artwork request. Cancellation can't stop an
     /// already-dispatched completion, and the same track can issue several
@@ -108,9 +151,27 @@ final class NowPlayingCoordinator {
     // MARK: - Command profile / session state
 
     private var currentIsLongFormContent: Bool?
+    private var currentIsRadio: Bool?
     private var currentLongFormSeekBackSeconds: Int64?
     private var currentLongFormSeekForwardSeconds: Int64?
     private var currentAudioSessionMode: AVAudioSession.Mode?
+    private var currentAudioSessionOptions: AVAudioSession.CategoryOptions?
+
+    /// True from the first `activatePlayback()` until the presentation clears.
+    /// Written on the audio thread, read on main, hence the lock.
+    private let ownsSessionLock = NSLock()
+    private var ownsSession = false
+    var ownsActiveSession: Bool {
+        ownsSessionLock.lock()
+        defer { ownsSessionLock.unlock() }
+        return ownsSession
+    }
+
+    private func setOwnsActiveSession(_ value: Bool) {
+        ownsSessionLock.lock()
+        ownsSession = value
+        ownsSessionLock.unlock()
+    }
 
     // MARK: - Logging
 
@@ -149,7 +210,7 @@ final class NowPlayingCoordinator {
 
     /// Applies track metadata: hands the track key group to the store, runs
     /// the artwork load, and derives session mode + command profile from the
-    /// long-form flag. A nil track means "nothing to present" — the store
+    /// content flags. A nil track means "nothing to present" — the store
     /// empties and profile/session return to defaults, while remote-command
     /// targets stay installed.
     private func handleTrack(_ track: NowPlayingTrack?) {
@@ -162,7 +223,7 @@ final class NowPlayingCoordinator {
         currentTrackId = track.mediaItemId
 
         configureAudioSession(mode: track.isLongFormContent ? .spokenAudio : .default)
-        updateRemoteCommandMode(isLongFormContent: track.isLongFormContent)
+        updateRemoteCommandMode(isLongFormContent: track.isLongFormContent, isRadio: track.isRadio)
 
         // No artwork: present immediately. Rebuild even for a same-identity
         // track — this write carries the complete presentation state, and a
@@ -171,18 +232,7 @@ final class NowPlayingCoordinator {
         guard let urlString = track.artworkUrl, !urlString.isEmpty else {
             supersedeArtworkLoad()
             artworkWaitTrackId = nil
-            cachedArtworkUrl = nil
-            cachedArtwork = nil
             applyTrackKeys(track, artwork: nil, rebuildingGroup: true)
-            return
-        }
-
-        // Cache hit (album playback reusing one cover): present immediately.
-        // Complete state, so rebuild (see the no-artwork branch).
-        if urlString == cachedArtworkUrl {
-            supersedeArtworkLoad()
-            artworkWaitTrackId = nil
-            applyTrackKeys(track, artwork: cachedArtwork, rebuildingGroup: true)
             return
         }
 
@@ -209,13 +259,6 @@ final class NowPlayingCoordinator {
             guard self.artworkRequestToken == token else {
                 self.logDebug("Ignoring superseded artwork for \(track.mediaItemId)")
                 return
-            }
-            // Cache only successes. A nil result may be a transient fetch
-            // failure; caching it would suppress retries for this URL for
-            // the rest of the session (e.g. a whole album with shared art).
-            if artwork != nil {
-                self.cachedArtworkUrl = urlString
-                self.cachedArtwork = artwork
             }
             self.artworkWaitTrackId = nil
             // Final write for this track: full state, so rebuild — clears any
@@ -267,10 +310,9 @@ final class NowPlayingCoordinator {
         currentTrackId = nil
         artworkWaitTrackId = nil
         supersedeArtworkLoad()
-        cachedArtworkUrl = nil
-        cachedArtwork = nil
         lastTransport = nil
         infoStore.clear()
+        setOwnsActiveSession(false)
         configureAudioSession(mode: .default)
         updateRemoteCommandMode(isLongFormContent: false)
     }
@@ -359,13 +401,19 @@ final class NowPlayingCoordinator {
     /// Sets the category only — does NOT activate. Activation interrupts other
     /// apps, so doing it at launch claims audio from whatever is already playing.
     /// Deferred to `activatePlayback()`, driven by real playback.
+    ///
+    /// Keep music non-mixable: `.mixWithOthers` prevents this app from becoming
+    /// the Now Playing app. Other apps request prompt ducking with `.duckOthers`,
+    /// so this session needs no ducking option.
     private func configureAudioSession(mode: AVAudioSession.Mode = .default) {
-        guard currentAudioSessionMode != mode else { return }
+        let options: AVAudioSession.CategoryOptions = []
+        guard currentAudioSessionMode != mode || currentAudioSessionOptions != options else { return }
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: mode, options: [])
+            try session.setCategory(.playback, mode: mode, options: options)
             currentAudioSessionMode = mode
-            logDebug("Audio session category configured: mode=\(mode.rawValue)")
+            currentAudioSessionOptions = options
+            logDebug("Audio session category configured: mode=\(mode.rawValue) options=\(options)")
         } catch {
             logError("Failed to configure audio session: \(error)")
         }
@@ -375,19 +423,18 @@ final class NowPlayingCoordinator {
     func activatePlayback() {
         do {
             let session = AVAudioSession.sharedInstance()
-            // Re-assert exclusive (non-mixing) playback before activating. The
-            // volume-button observer may have switched the shared session to
-            // .mixWithOthers while only a remote player was being viewed; when
-            // local playback actually starts we must reclaim exclusive focus so we
-            // become the Now Playing app. Keep the mode the track handler chose
-            // (.spokenAudio for long-form content) rather than forcing .default,
-            // which would silently clobber it and desync `currentAudioSessionMode`.
-            try session.setCategory(.playback, mode: currentAudioSessionMode ?? .default, options: [])
+            // Re-assert before activating: the volume-button observer may have
+            // switched the session to .mixWithOthers while a remote player was
+            // in view. Restore the mode/options the track handler chose.
+            let mode = currentAudioSessionMode ?? .default
+            let options: AVAudioSession.CategoryOptions = []
+            try session.setCategory(.playback, mode: mode, options: options)
             try session.setActive(true, options: .notifyOthersOnDeactivation)
+            setOwnsActiveSession(true)
             // Info level: fires only when playback (re)starts, and an absent
             // line here is the tell when iOS shows "Not Playing" despite
             // healthy info-center assignments.
-            logInfo("Playback activated: mode=\((currentAudioSessionMode ?? .default).rawValue)")
+            logInfo("Playback activated: mode=\(mode.rawValue) options=\(options)")
         } catch {
             logError("Failed to activate playback: \(error)")
         }
@@ -398,7 +445,7 @@ final class NowPlayingCoordinator {
     /// Sets the handler for remote commands
     /// We now support dynamic handler updates without re-registering commands
     func setCommandHandler(_ handler: @escaping CommandHandler) {
-        self.commandHandler = handler
+        commandHandler.replace(handler)
         logDebug("Command handler updated")
     }
 
@@ -408,6 +455,8 @@ final class NowPlayingCoordinator {
     func dispatchCarCommand(_ command: String) {
         dispatchPrecondition(condition: .onQueue(.main))
         let resolvedCommand = resolveRemoteCommand(command)
+        var commandHandler: CommandHandler?
+        self.commandHandler.withSnapshot { commandHandler = $0 }
         guard let commandHandler else {
             // Narrow window (the handler is wired during player init, before
             // any CarPlay button can become enabled), but a silently vanishing
@@ -433,7 +482,7 @@ final class NowPlayingCoordinator {
                 guard let self = self else { return .commandFailed }
                 let resolvedCommand = self.resolveRemoteCommand(cmd)
                 self.logDebug("Remote command received: \(resolvedCommand)")
-                self.commandHandler?(resolvedCommand)
+                self.commandHandler.withSnapshot { $0?(resolvedCommand) }
                 return .success
             }
         }
@@ -454,14 +503,14 @@ final class NowPlayingCoordinator {
         addTarget(commandCenter.changeShuffleModeCommand, cmd: "toggle_shuffle", enabled: false)
         addTarget(commandCenter.changeRepeatModeCommand, cmd: "toggle_repeat", enabled: false)
 
-        commandCenter.changePlaybackPositionCommand.isEnabled = true
+        // Enablement belongs to the transport profile above.
         commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
             guard let positionEvent = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
             // Floor to the same whole-second target KMP freezes at; otherwise the
             // lock-screen thumb can correct backward when the KMP anchor lands.
             let seekPosition = positionEvent.positionTime.rounded(.down)
             self?.logInfo("Remote seek command received: \(seekPosition)")
-            self?.commandHandler?("seek:\(seekPosition)")
+            self?.commandHandler.withSnapshot { $0?("seek:\(seekPosition)") }
             return .success
         }
     }
@@ -484,18 +533,20 @@ final class NowPlayingCoordinator {
         }
     }
 
-    /// Swaps the transport-command profile: music uses prev/next, long-form
-    /// content uses skip ±N. Never touches the shuffle/repeat commands —
-    /// those belong to the modes handler.
-    private func updateRemoteCommandMode(isLongFormContent: Bool) {
-        guard currentIsLongFormContent != isLongFormContent else { return }
+    /// Swaps the transport-command profile: radio uses play/pause only,
+    /// music uses prev/next, and long-form content uses skip ±N.
+    /// Shuffle/repeat commands belong to the modes handler.
+    private func updateRemoteCommandMode(isLongFormContent: Bool, isRadio: Bool = false) {
+        guard currentIsLongFormContent != isLongFormContent || currentIsRadio != isRadio else { return }
         currentIsLongFormContent = isLongFormContent
+        currentIsRadio = isRadio
 
         let commandCenter = MPRemoteCommandCenter.shared()
-        commandCenter.previousTrackCommand.isEnabled = !isLongFormContent
-        commandCenter.nextTrackCommand.isEnabled = !isLongFormContent
-        commandCenter.skipBackwardCommand.isEnabled = isLongFormContent
-        commandCenter.skipForwardCommand.isEnabled = isLongFormContent
+        commandCenter.previousTrackCommand.isEnabled = !isRadio && !isLongFormContent
+        commandCenter.nextTrackCommand.isEnabled = !isRadio && !isLongFormContent
+        commandCenter.skipBackwardCommand.isEnabled = !isRadio && isLongFormContent
+        commandCenter.skipForwardCommand.isEnabled = !isRadio && isLongFormContent
+        commandCenter.changePlaybackPositionCommand.isEnabled = !isRadio
     }
 
     func setLongFormSeekIntervals(backSeconds: Int64, forwardSeconds: Int64) {
@@ -514,9 +565,9 @@ final class NowPlayingCoordinator {
 
     // MARK: - Artwork loading
 
-    private func loadArtwork(urlString: String, completion: @escaping (MPMediaItemArtwork?) -> Void) -> Cancellable {
-        return KmpHelper.shared.loadArtworkBytes(urlString: urlString) { data in
-            guard let data = data as Data?, let image = UIImage(data: data) else {
+    private func loadArtwork(urlString: String, completion: @escaping (MPMediaItemArtwork?) -> Void) -> ComposeApp.Cancellable {
+        return NativeArtworkLoader.loadArtwork(urlString: urlString) { image in
+            guard let image else {
                 completion(nil)
                 return
             }

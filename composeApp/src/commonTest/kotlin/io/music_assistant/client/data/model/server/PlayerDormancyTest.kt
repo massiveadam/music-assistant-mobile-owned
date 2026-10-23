@@ -98,4 +98,27 @@ class PlayerDormancyTest {
         assertTrue(player.isListed)
         assertTrue(player.isPoweredOff)
     }
+
+    @Test
+    fun `an unreachable player is not selectable even with power control`() {
+        // The server drops every command for it, power included (issue #962).
+        assertFalse(player("""{"player_id": "p", "available": false}""").isSelectable)
+        val powerable = player(
+            """{
+                "player_id": "p",
+                "available": false,
+                "power_control": "fake",
+                "supported_features": ["power"]
+            }""",
+        )
+        assertFalse(powerable.isSelectable)
+    }
+
+    @Test
+    fun `a reachable player or one awaiting setup is selectable`() {
+        val awaitingSetup = player("""{"player_id": "p", "available": false, "needs_setup": true}""")
+
+        assertTrue(awaitingSetup.isSelectable)
+        assertTrue(player("""{"player_id": "p", "available": true}""").isSelectable)
+    }
 }

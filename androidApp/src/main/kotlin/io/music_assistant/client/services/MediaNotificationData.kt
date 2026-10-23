@@ -6,6 +6,7 @@ import io.music_assistant.client.data.model.client.PlayerData
 import io.music_assistant.client.data.model.client.RepeatMode
 import io.music_assistant.client.data.model.client.ResolvedChapter
 import io.music_assistant.client.data.model.client.items.AppMediaItem
+import io.music_assistant.client.data.model.client.items.Audiobook
 import io.music_assistant.client.data.model.client.items.canBeFavorited
 import io.music_assistant.client.data.model.client.items.isLongFormSpokenContent
 
@@ -17,6 +18,8 @@ private const val ELAPSED_TIME_DRIFT_TOLERANCE_MS = 1_000
 data class MediaNotificationData(
     val multiplePlayers: Boolean,
     val longItemId: Long?,
+    // Session queue row to highlight: the active chapter row when chapter mode applies, else the slot.
+    val activeQueueItemId: Long?,
     val name: String?,
     val artist: String?,
     val album: String?,
@@ -24,13 +27,16 @@ data class MediaNotificationData(
     val shuffleEnabled: Boolean?,
     // Audiobook / podcast episode: notification swaps shuffle & repeat for seek controls.
     val isLongFormContent: Boolean,
-    // Current item is a favoritable track: a favorite toggle competes for a slot
-    // (see sessionActions for the slot rule).
+    // Current item is a favoritable track: gates the favorite toggle action
+    // (see sessionActions for the render-order priority).
     val isFavoritableTrack: Boolean,
+    // Current item is a radio stream with a real song on air: same slot competition
+    // as isFavoritableTrack, but the action always adds (see getFavoriteIcon).
+    val isFavoritableStream: Boolean,
     val isFavorite: Boolean,
     val isPlaying: Boolean,
     val imageUrl: String?,
-    // Active audiobook chapter; elapsed/duration are chapter-relative and album carries its name.
+    // Active audiobook chapter; elapsed/duration are chapter-relative and the artist line shows its name.
     val chapterName: String?,
     val elapsedTime: Long?,
     // SystemClock.elapsedRealtime() captured when [elapsedTime] was sampled.
@@ -59,11 +65,20 @@ data class MediaNotificationData(
             multiplePlayers: Boolean,
             effectiveElapsedSec: Double?,
             currentChapter: ResolvedChapter? = null,
+            // Real on-air stream song AND the connected server can resolve it — see
+            // MainDataSource.canFavoriteCurrentlyPlaying, the single source for this.
+            isFavoritableStream: Boolean = false,
         ) = run {
             val currentTrack = playerData.queueInfo?.currentItem?.track as? AppMediaItem
+            val longItemId = playerData.player.currentMedia?.queueItemId?.let(::sessionQueueItemId)
             MediaNotificationData(
             multiplePlayers = multiplePlayers,
-            longItemId = playerData.player.currentMedia?.hashCode()?.toLong(),
+            longItemId = longItemId,
+            activeQueueItemId = playerData.queueInfo?.currentItem?.let { slot ->
+                (slot.track as? Audiobook)?.chapters?.indexOf(currentChapter?.chapter)
+                    ?.takeIf { it >= 0 }
+                    ?.let { sessionChapterItemId(slot.id, it) }
+            } ?: longItemId,
             name = playerData.player.currentMedia?.title,
             artist = playerData.player.currentMedia?.artist,
             album = playerData.player.currentMedia?.album,
@@ -74,7 +89,11 @@ data class MediaNotificationData(
             isLongFormContent = playerData.queueInfo?.currentItem?.track.isLongFormSpokenContent,
             isFavoritableTrack = currentTrack
                 ?.let { it.mediaType == MediaType.TRACK && it.canBeFavorited } == true,
-            isFavorite = currentTrack?.favorite == true,
+            isFavoritableStream = isFavoritableStream,
+            // The station's own favorite flag would show a filled heart for an already-
+            // favorited station even though nothing has been favorited for the on-air song,
+            // so the stream case always renders un-filled.
+            isFavorite = currentTrack?.favorite == true && !isFavoritableStream,
             isPlaying = playerData.player.isPlaying,
             imageUrl = playerData.player.currentMedia?.imageUrl,
             chapterName = currentChapter?.displayName,

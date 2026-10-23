@@ -37,8 +37,8 @@ import androidx.compose.ui.unit.sp
 import io.music_assistant.client.data.model.client.PlayerData
 import io.music_assistant.client.data.model.client.PlayerDataFixtures
 import io.music_assistant.client.data.model.client.PlayerType
-import io.music_assistant.client.player.sendspin.SendspinState
 import io.music_assistant.client.ui.contentColorByLuminance
+import io.music_assistant.sendspin.api.PlayerState
 import musicassistantclient.composeapp.generated.resources.Res
 import musicassistantclient.composeapp.generated.resources.cd_current_player
 import org.jetbrains.compose.resources.stringResource
@@ -48,7 +48,7 @@ import org.jetbrains.compose.resources.stringResource
 fun PlayerSelectionButton(
     player: PlayerData,
     controlTint: Color = MaterialTheme.colorScheme.primary,
-    sendSpinState: SendspinState?,
+    sendSpinState: PlayerState?,
     onSelectPlayer: () -> Unit = {},
     onGroupButton: () -> Unit = {},
 ) {
@@ -187,15 +187,11 @@ private fun PlayerButtonContent(
     }
 }
 
-private fun SendspinState.toDotColor(): Color = when (this) {
-    is SendspinState.Synchronized, is SendspinState.Ready,
-    is SendspinState.Buffering,
-        -> Color(0xFF4CAF50) // Green
-    is SendspinState.Connecting, is SendspinState.Authenticating,
-    is SendspinState.Handshaking, is SendspinState.Reconnecting,
-        -> Color(0xFFFF9800) // Orange
-    is SendspinState.Error -> Color(0xFFF44336) // Red
-    is SendspinState.Idle -> Color(0xFFBDBDBD) // Light gray
+private fun PlayerState.toDotColor(): Color = when (this) {
+    is PlayerState.Connected -> Color(0xFF4CAF50) // Green
+    is PlayerState.Connecting, is PlayerState.Reconnecting -> Color(0xFFFF9800) // Orange
+    is PlayerState.Failed -> Color(0xFFF44336) // Red
+    PlayerState.Disabled -> Color(0xFFBDBDBD) // Light gray
 }
 
 @Preview
@@ -215,7 +211,7 @@ private fun PlayerSelectionButtonLocalPlayerPreview() {
     MaterialTheme {
         PlayerSelectionButton(
             player = PlayerDataFixtures.playerData().copy(isLocal = true),
-            sendSpinState = SendspinState.Synchronized,
+            sendSpinState = PlayerState.Connecting(0),
         )
     }
 }

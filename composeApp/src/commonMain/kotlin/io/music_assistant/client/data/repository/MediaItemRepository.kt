@@ -38,7 +38,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 
-private val boundedReadCommands = setOf( "music/artists/get", "music/artists/get_artist",
+private val boundedReadCommands = setOf("music/artists/get", "music/artists/get_artist",
     "music/albums/get", "music/albums/get_album", "music/albums/album_tracks", "music/artists/album_groups")
 private val sourceReadCommands = setOf("music/artists/top_tracks", "music/artists/similar_artists")
 
@@ -69,6 +69,31 @@ fun searchRequest(request: Request, sourceStatus: Boolean, fastReads: Boolean): 
     })
 }
 
+interface MediaItemRepository {
+    suspend fun fetchMediaItems(request: Request): Result<List<AppMediaItem>>
+    val itemChanges: SharedFlow<MediaItemChange>
+    suspend fun search(request: Request): Result<SearchResultData>
+    suspend fun fetchMediaItem(request: Request): Result<AppMediaItem?>
+    fun publishLocalChange(change: MediaItemChange)
+
+    suspend fun supportsSourceRecovery(): Boolean
+    suspend fun supportsInteractiveReads(): Boolean
+    suspend fun fetchAlbumGroups(itemId: String, provider: String, inLibraryOnly: Boolean = false, recover: Boolean = false): Result<AlbumGroups>
+    val personalState get() = personalMusic?.state
+    fun personalItems(type: io.music_assistant.client.data.model.client.MediaType): List<AppMediaItem>
+    fun supportsRecommendationRowItems(): Boolean
+
+    data class AlbumGroups(
+        val owned: List<Album>,
+        val all: List<Album>,
+        val unavailableSources: List<String>,
+        val unlinkedSources: List<String> = emptyList(),
+    )
+
+    val personalMusic: PersonalMusicRepository?
+        get() = null
+}
+
 /**
  * Single seam between RPC + DTO land and the UI's typed `AppMediaItem` world.
  *
@@ -77,32 +102,27 @@ fun searchRequest(request: Request, sourceStatus: Boolean, fastReads: Boolean): 
  * and centralizes the "decode payload + map to client model" boilerplate
  * that was duplicated across every list/get/search call site.
  */
-class MediaItemRepository(
+class ServiceClientMediaItemRepository(
     private val apiClient: ServiceClient,
     private val factory: MediaItemFactory,
     private val personalMusic: PersonalMusicRepository? = null,
-) {
+) : MediaItemRepository {
     // Singleton-scoped app-lifetime job; only used to keep [itemChanges]
     // hot. Survives subscriber turnover so quick navigation between screens
     // doesn't churn the upstream `apiClient.events` subscription.
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-    /**
-     * Issue [request] and decode its payload as a list of client media items.
-     * Failures (RPC error, decode failure, missing payload) surface as a
-     * failed [Result] so callers can still log via `result.exceptionOrNull()`.
-     */
     private val capabilitiesLock = Mutex()
     private var capabilitiesServer: Any? = null
     private var fastReads = false
     private var performanceCaps: Map<String, Boolean> = emptyMap()
 
-    suspend fun supportsSourceRecovery(): Boolean {
+    override suspend fun supportsSourceRecovery(): Boolean {
         supportsInteractiveReads()
         return performanceCaps["artist_source_recovery"] == true
     }
 
-    suspend fun supportsInteractiveReads(): Boolean = capabilitiesLock.withLock {
+    override suspend fun supportsInteractiveReads(): Boolean = capabilitiesLock.withLock {
         val server = (apiClient.sessionState.value as? HasConnectionData)?.serverInfo ?: return@withLock false
         if (capabilitiesServer !== server) {
             val answer = withTimeoutOrNull(1200) {
@@ -124,20 +144,13 @@ class MediaItemRepository(
         return performanceBrowsingRequest(request, supportsInteractiveReads())
     }
 
-    data class AlbumGroups(
-        val owned: List<Album>,
-        val all: List<Album>,
-        val unavailableSources: List<String>,
-        val unlinkedSources: List<String> = emptyList(),
-    )
-
-    val personalState get() = personalMusic?.state
-    fun personalItems(type: io.music_assistant.client.data.model.client.MediaType): List<AppMediaItem> =
+    override val personalState get() = personalMusic?.state
+    override fun personalItems(type: io.music_assistant.client.data.model.client.MediaType): List<AppMediaItem> =
         personalMusic?.state?.value?.saves?.entries.orEmpty()
             .filter { it.item.mediaType == type.serverValue }
             .mapNotNull { factory.create(it.item.asServer()) }
 
-    suspend fun fetchAlbumGroups(itemId: String, provider: String, inLibraryOnly: Boolean = false,
+    override suspend fun fetchAlbumGroups(itemId: String, provider: String, inLibraryOnly: Boolean = false,
                                  recover: Boolean = false): Result<AlbumGroups> =
         apiClient.sendRequest(if (recover && supportsSourceRecovery()) Request("music/artists/recover_sources", buildJsonObject {
             put("item_id", JsonPrimitive(itemId)); put("provider_instance_id_or_domain", JsonPrimitive(provider))
@@ -152,7 +165,7 @@ class MediaItemRepository(
             )
         }
 
-    suspend fun fetchMediaItems(request: Request): Result<List<AppMediaItem>> =
+    override suspend fun fetchMediaItems(request: Request): Result<List<AppMediaItem>> =
         apiClient.sendRequest(browsingRequest(request)).mapCatching { answer ->
             answer.resultAs<List<ServerMediaItem>>()
                 ?.let(factory::createList)
@@ -189,7 +202,7 @@ class MediaItemRepository(
      * instead. This can be simplified once v2.10 is our minimum supported server
      * version.
      */
-    fun supportsRecommendationRowItems(): Boolean =
+    override fun supportsRecommendationRowItems(): Boolean =
         (apiClient.sessionState.value as? HasConnectionData)?.serverInfo?.schemaVersion
             ?.let { it >= RECOMMENDATION_ITEMS_SCHEMA } == true
 
@@ -236,13 +249,13 @@ class MediaItemRepository(
      * Returns `Result.success(null)` for an absent payload so a 404-style
      * "not found" stays distinguishable from a transport failure.
      */
-    suspend fun fetchMediaItem(request: Request): Result<AppMediaItem?> =
+    override suspend fun fetchMediaItem(request: Request): Result<AppMediaItem?> =
         apiClient.sendRequest(browsingRequest(request)).map { answer ->
             answer.resultAs<ServerMediaItem>()?.let(factory::create)
         }
 
     /** Issue [request] and decode its payload as a typed [SearchResultData]. */
-    suspend fun search(request: Request): Result<SearchResultData> =
+    override suspend fun search(request: Request): Result<SearchResultData> =
         apiClient.sendRequest(browsingRequest(request)).mapCatching { answer ->
             answer.resultAs<SearchResult>()
                 ?.let(factory::createSearchResult)
@@ -255,7 +268,7 @@ class MediaItemRepository(
     private val localChanges = MutableSharedFlow<MediaItemChange>(extraBufferCapacity = 16)
 
     /** Publish an optimistic, client-originated [change] to [itemChanges] subscribers. */
-    fun publishLocalChange(change: MediaItemChange) {
+    override fun publishLocalChange(change: MediaItemChange) {
         localChanges.tryEmit(change)
     }
 
@@ -266,7 +279,7 @@ class MediaItemRepository(
      * `mediaItemFactory.create(...)` themselves. Replay is zero — late
      * subscribers only see future changes.
      */
-    val itemChanges: SharedFlow<MediaItemChange> = merge(
+    override val itemChanges: SharedFlow<MediaItemChange> = merge(
         localChanges,
         apiClient.events.mapNotNull { event ->
             when (event) {
@@ -299,6 +312,70 @@ class MediaItemRepository(
             uri = "${fallback.providerInstance}://$mediaType/${fallback.itemId}",
         )
     }
+}
+
+/**
+ * The home-page recommendation rows as the server returned them
+ */
+suspend fun MediaItemRepository.fetchRecommendationRows(): Result<List<RecommendationFolder>> =
+    withContext(Dispatchers.IO) {
+        fetchMediaItems(Request.Library.recommendations())
+            .map { items -> items.filterIsInstance<RecommendationFolder>() }
+    }
+
+/** Items of one recommendation row, or null when the fetch failed (logged). */
+suspend fun MediaItemRepository.fetchRecommendationRowItems(
+    folder: RecommendationFolder,
+): List<AppMediaItem>? = withContext(Dispatchers.IO) {
+    fetchMediaItems(
+        Request.Library.recommendationItems(folder.provider, folder.itemId),
+    ).getOrElse { error ->
+        if (error is CancellationException) throw error
+        Logger.w(
+            "Failed fetching recommendation items for " +
+                    "${folder.provider}/${folder.itemId}: $error",
+        )
+        null
+    }
+}
+
+/**
+ * One-shot, fully-resolved recommendation rows for consumers without a
+ * progressive UI (e.g. CarPlay lists).
+ */
+suspend fun MediaItemRepository.fetchRecommendationFolders(): Result<List<RecommendationFolder>> {
+    val folders = fetchRecommendationRows().getOrElse { error ->
+        if (error is CancellationException) throw error
+        return Result.failure(error)
+    }
+
+    return Result.success(
+        coroutineScope {
+            folders.map { folder ->
+                async {
+                    folder.copy(items = fetchRecommendationRowItems(folder).orEmpty())
+                }
+            }.awaitAll()
+        },
+    )
+}
+
+/**
+ * Fetch items for multiple requests and combine them into one list. Returns a failure Result
+ * if any of the requests fail (and fails fast).
+ */
+suspend fun MediaItemRepository.fetchMediaItems(requests: List<Request>): Result<List<AppMediaItem>> {
+    val items = mutableListOf<AppMediaItem>()
+    for (request in requests) {
+        val result = this.fetchMediaItems(request)
+        if (result.isSuccess) {
+            items += result.getOrEmptyList()
+        } else {
+            return result
+        }
+    }
+
+    return Result.success(items)
 }
 
 private fun <T : AppMediaItem> List<T>.replacing(changed: T): List<T> =

@@ -11,6 +11,10 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
 
     var interfaceController: CPInterfaceController?
 
+    /// All template-stack mutations go through this serialized coordinator.
+    /// Recreated per CarPlay connection so old callbacks cannot mutate a new session.
+    private var navigationCoordinator: CarPlayNavigationCoordinator<CarPlayInterfaceControllerNavigationDriver>?
+
     // MARK: - Readiness state
     //
     // `isReady` mirrors `serviceClient.isReadyForCommands` so synchronous
@@ -43,7 +47,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     //   - Track channel: profile flips swap which retained instances are
     //     installed. Music gets shuffle/repeat; long-form content with
     //     navigable chapters gets chapter prev/next (the transport row keeps
-    //     the ±N skips); other long-form content gets nothing.
+    //     the ±N skips); radio and other long-form content get nothing.
     //   - Modes channel: shuffle/repeat enablement only.
     // Selected state is never written here: CarPlay renders it from
     // MPRemoteCommandCenter's currentShuffleType/currentRepeatType, whose sole
@@ -75,16 +79,21 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     private var recommendationsFetchGen: Int = 0
 
     /// Shared completion handler for CarPlay template operations.
-    private let logTemplateError: (Bool, Error?) -> Void = { _, error in
+    private let logTemplateError: (Bool, Error?) -> Void = { success, error in
         if let error = error {
             os_log("CP: template error: %{public}@",
                    log: cpLog, type: .error, "\(error)")
+        } else if !success {
+            os_log("CP: template navigation failed or was blocked by the depth guard",
+                   log: cpLog, type: .error)
         }
     }
 
     // MARK: - CPTemplateApplicationSceneDelegate
 
     func templateApplicationScene(_ templateApplicationScene: CPTemplateApplicationScene, didConnect interfaceController: CPInterfaceController) {
+        navigationCoordinator?.invalidateSession()
+        navigationCoordinator = nil
         self.interfaceController = interfaceController
         os_log("CP: didConnect", log: cpLog, type: .default)
         // Reset per-session state for a clean reconnect.
@@ -99,6 +108,15 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
             self.interfaceController = nil
             return
         }
+
+        let driver = CarPlayInterfaceControllerNavigationDriver(interfaceController: interfaceController)
+        navigationCoordinator = CarPlayNavigationCoordinator(
+            driver: driver,
+            onFailure: { [weak self] error in
+                self?.logTemplateError(false, error)
+            }
+        )
+        navigationCoordinator?.startSession()
         didAttachExternalConsumer = true
         KmpHelper.shared.onExternalConsumerActive()
         // Rehydrate Now Playing from the server; attaching alone never authorizes playback.
@@ -125,8 +143,10 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     }
 
     func templateApplicationScene(_ templateApplicationScene: CPTemplateApplicationScene, didDisconnectInterfaceController interfaceController: CPInterfaceController) {
-        // Invalidate any in-flight didConnect completions for this connection.
+        // Invalidate any in-flight didConnect and navigation completions for this connection.
         connectionGen += 1
+        navigationCoordinator?.invalidateSession()
+        navigationCoordinator = nil
         // Cancel subscriptions before tearing down state to avoid the
         // callbacks racing with a nil interfaceController.
         readinessSubscription?.cancel()
@@ -250,11 +270,13 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         nowPlayingButtonsEnabled = nil
 
         trackSubscription = KmpHelper.shared.observeNowPlayingTrack { [weak self] track in
-            // Bottom bar shows chapter prev/next only when the long-form
-            // content has navigable chapters, otherwise nothing. A nil track
-            // keeps the music profile; the modes channel's nil disables it.
+            // Radio has no auxiliary controls. Long-form shows chapter
+            // prev/next only with navigable chapters. A nil track keeps the
+            // music profile; the modes channel's nil disables it.
             let profile: NowPlayingButtonProfile
-            if track?.isLongFormContent != true {
+            if track?.isRadio == true {
+                profile = .empty
+            } else if track?.isLongFormContent != true {
                 profile = .music
             } else if track?.hasChapterNavigation == true {
                 profile = .chapters
@@ -325,7 +347,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     private func setupTemplates() {
         guard let strings = strings else { return }
         let libraryTemplate = createLibraryTemplate(strings)
-        interfaceController?.setRootTemplate(libraryTemplate, animated: true, completion: logTemplateError)
+        navigationCoordinator?.setRootTemplate(libraryTemplate, animated: true)
     }
 
     // MARK: - UI Construction
@@ -480,7 +502,6 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
 
                 let displayItems = Array(folderItems.prefix(maxImages))
                 var images = Array(repeating: placeholder, count: displayItems.count)
-
                 let row = CPListImageRowItem(text: folder.displayName, images: images)
                 row.listImageRowHandler = { [weak self] _, index, completion in
                     guard let self = self else { completion(); return }
@@ -518,34 +539,15 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
 
     // MARK: - Navigation Helpers
 
-    /// Centralize template pushes to keep track of how many we have and not go
-    /// over five, a hard-coded CarPlay limit
+    /// Centralize template pushes. The coordinator serializes mutations,
+    /// enforces the CarPlay depth limit, and reuses singleton templates.
     private func safePushTemplate(_ template: CPTemplate, animated: Bool) {
-        guard let interfaceController = interfaceController else { return }
-        if interfaceController.templates.count >= 5 {
-            interfaceController.popToRootTemplate(animated: false) { [weak interfaceController] _, _ in
-                interfaceController?.pushTemplate(template, animated: animated, completion: self.logTemplateError)
-            }
-            return
-        }
-        interfaceController.pushTemplate(template, animated: animated, completion: logTemplateError)
+        navigationCoordinator?.pushTemplate(template, animated: animated)
     }
 
-    /// Safely navigate to the singleton `CPNowPlayingTemplate`
+    /// Safely navigate to the singleton `CPNowPlayingTemplate`.
     private func pushNowPlayingTemplate(animated: Bool) {
-        guard let interfaceController = interfaceController else { return }
-        if interfaceController.topTemplate === CPNowPlayingTemplate.shared {
-            return
-        }
-        if interfaceController.templates.contains(where: { $0 === CPNowPlayingTemplate.shared }) {
-            interfaceController.pop(
-                to: CPNowPlayingTemplate.shared,
-                animated: animated,
-                completion: logTemplateError
-            )
-            return
-        }
-        safePushTemplate(CPNowPlayingTemplate.shared, animated: animated)
+        navigationCoordinator?.showSingletonTemplate(CPNowPlayingTemplate.shared, animated: animated)
     }
 
     private func pushBrowseGrid() {

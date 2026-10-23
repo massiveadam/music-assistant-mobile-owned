@@ -29,7 +29,6 @@ class SessionEligibilityTest {
                                 track = testTrack(),
                                 isPlayable = true,
                                 format = null,
-                                dsp = null,
                                 provider = "test",
                             ),
                         ),

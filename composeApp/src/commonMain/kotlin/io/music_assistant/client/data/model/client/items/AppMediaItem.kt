@@ -5,7 +5,6 @@ import io.music_assistant.client.data.model.client.ImageInfo
 import io.music_assistant.client.data.model.client.ImageType
 import io.music_assistant.client.data.model.client.MediaType
 import io.music_assistant.client.data.model.client.Metadata
-import io.music_assistant.client.data.model.client.QueueTrack
 import io.music_assistant.client.data.model.server.AudioFormat
 import io.music_assistant.client.data.model.server.ProviderMapping
 import io.music_assistant.client.data.model.server.ServerMediaItem
@@ -24,11 +23,12 @@ interface PlayableItem {
     val provider: String
     val isInLibrary: Boolean
     val favorite: Boolean?
-    val longId: Long
-        get() = itemId.hashCode().toLong()
     val canStartEndlessMix: Boolean
 
     val isPlayable: Boolean
+
+    /** Server `position`. In a playlist listing it is the row key for removal, for every item type. */
+    val position: Int?
 
     /** Returns a copy of this item with its [favorite] flag set to [favorite]. */
     fun withFavorite(favorite: Boolean?): PlayableItem
@@ -132,8 +132,11 @@ sealed class AppMediaItem {
                 ")"
 }
 
-/** A quick favorite toggle is possible only when the add path has a [uri] to send. */
-val AppMediaItem.canBeFavorited: Boolean get() = uri != null
+/**
+ * A quick favorite toggle is possible only when the add path has a [uri] to send. A live
+ * input has a uri, but nothing on the server to favorite.
+ */
+val AppMediaItem.canBeFavorited: Boolean get() = uri != null && this !is AudioSource
 
 /** Library membership comes from MA, never from a provider name alone. */
 val AppMediaItem.hasLibraryEntry: Boolean
@@ -161,38 +164,6 @@ val AudioFormat.description: String
         sampleRate?.let { "$it Hz" },
         bitDepth?.let { "$it bit" },
     ).joinToString()
-
-enum class QualityTier { HQ, SQ, LQ }
-
-private val lossyContentTypes = setOf("mp3", "aac", "ogg", "opus", "vorbis", "m4a", "wma")
-
-private fun AudioFormat.isLossy(): Boolean =
-    contentType?.lowercase()?.let { ct -> lossyContentTypes.any { ct.contains(it) } } == true
-
-private const val HI_RES_SAMPLE_RATE = 44_100
-private const val HI_RES_BITRATE = 16
-
-val AudioFormat.qualityTier: QualityTier?
-    get() {
-        val sr = sampleRate ?: return null
-        val bd = bitDepth ?: return null
-        if (sr < HI_RES_SAMPLE_RATE || bd < HI_RES_BITRATE) return QualityTier.LQ
-        return if (isLossy()) QualityTier.SQ else QualityTier.HQ
-    }
-
-val QueueTrack.qualityTier: QualityTier?
-    get() {
-        val stages = listOfNotNull(format) +
-                dsp?.values.orEmpty().mapNotNull { it.outputFormat }
-        if (stages.isEmpty()) return null
-        val tiers = stages.mapNotNull { it.qualityTier }
-        if (tiers.isEmpty()) return null
-        return when {
-            QualityTier.LQ in tiers -> QualityTier.LQ
-            QualityTier.SQ in tiers -> QualityTier.SQ
-            else -> QualityTier.HQ
-        }
-    }
 
 internal data class ProviderHash(val itemId: String, val providerInstance: String)
 

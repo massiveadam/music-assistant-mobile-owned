@@ -14,6 +14,11 @@ class AudioChainPage(composeTestRule: ComposeTestRule) : ComposePage(composeTest
         composeTestRule.onNodeWithText(Res.string.quality_dialog_title.get()).assertIsDisplayed()
     }
 
+    fun assertInputProvider(name: String): AudioChainPage {
+        composeTestRule.onNodeWithText(name).assertIsDisplayed()
+        return this
+    }
+
     fun assertFormatDisplayed(audioFormat: AudioFormat): AudioChainPage {
         composeTestRule.onNodeWithText(audioFormat.description).assertIsDisplayed()
         return this

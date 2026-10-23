@@ -25,6 +25,8 @@ sealed interface PlayerDialogRequest {
 
     data class Lyrics(override val playerId: String, val trackId: String) : PlayerDialogRequest
 
+    data class ChooseArtist(override val playerId: String, val trackId: String) : PlayerDialogRequest
+
     data class AudioChain(
         override val playerId: String,
         val queueItemId: String,
@@ -34,6 +36,10 @@ sealed interface PlayerDialogRequest {
         override val playerId: String,
         val queueItemId: String,
     ) : PlayerDialogRequest
+
+    data class Announcement(override val playerId: String) : PlayerDialogRequest
+
+    data class AmbientSound(override val playerId: String) : PlayerDialogRequest
 
     /**
      * Carries the item itself: the add-to-playlist target is a snapshot taken at click time
@@ -56,12 +62,17 @@ fun PlayerDialogRequest.hasAnchor(player: PlayerData): Boolean = when (this) {
     is PlayerDialogRequest.Lyrics ->
         (player.queueInfo?.currentItem?.track as? Track)?.itemId == trackId
 
+    is PlayerDialogRequest.ChooseArtist ->
+        (player.queueInfo?.currentItem?.track as? Track)?.itemId == trackId
+
     is PlayerDialogRequest.AudioChain ->
         player.queueInfo?.currentItem?.id == queueItemId
 
     is PlayerDialogRequest.PlaybackSpeed ->
         player.queueInfo?.let { it.currentItem?.id == queueItemId && it.playbackSpeed != null }
             ?: false
+
+    is PlayerDialogRequest.AmbientSound -> player.queueInfo?.overlay != null
 
     else -> true
 }

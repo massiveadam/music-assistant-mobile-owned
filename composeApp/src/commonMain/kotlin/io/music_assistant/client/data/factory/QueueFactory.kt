@@ -3,6 +3,7 @@ package io.music_assistant.client.data.factory
 import co.touchlab.kermit.Logger
 import io.music_assistant.client.data.model.client.MediaType
 import io.music_assistant.client.data.model.client.QueueInfo
+import io.music_assistant.client.data.model.client.QueueOverlay
 import io.music_assistant.client.data.model.client.QueueTrack
 import io.music_assistant.client.data.model.client.RepeatMode
 import io.music_assistant.client.data.model.client.items.PlayableItem
@@ -36,6 +37,15 @@ class QueueFactory(
             radioSource = radioSource?.let { mediaItemFactory.createList(it) } ?: emptyList(),
             isDynamicPlaylist = isDynamic,
             playbackSpeed = playbackSpeed,
+            playActionInProgress = extraAttributes?.playActionInProgress == true,
+            overlay = overlayEnabled?.let {
+                QueueOverlay(
+                    enabled = it,
+                    sourceUri = overlaySource?.uri,
+                    sourceName = overlaySource?.name,
+                    volume = overlayVolume ?: QueueOverlay.DEFAULT_VOLUME,
+                )
+            },
         )
     }
 
@@ -54,8 +64,8 @@ class QueueFactory(
                     track = appMediaItem,
                     isPlayable = appMediaItem.isPlayable,
                     format = streamDetails?.audioFormat,
-                    dsp = streamDetails?.dsp,
                     provider = streamDetails?.provider,
+                    audioProcessingChain = streamDetails?.audioProcessingChain,
                 )
             } else {
                 Logger.w(
@@ -93,7 +103,6 @@ class QueueFactory(
                     track = appMediaItem,
                     isPlayable = false,
                     format = null,
-                    dsp = null,
                     provider = null,
                 )
             }

@@ -84,7 +84,7 @@ fun LibraryScreen(
     var items by remember { mutableStateOf(categoriesState.categories.map { it.libraryCategory to it.enabled }) }
     val enabledCount = items.count { it.second }
 
-    var editMode by remember { mutableStateOf(false) }
+    var editMode by state::editMode
     val displayed = if (editMode) {
         items
     } else {
@@ -239,6 +239,9 @@ class LibraryScreenState(
     val lazyGridState: LazyGridState,
     val coroutineScope: CoroutineScope,
 ) : ScreenState {
+    /** Read by the navigation root, which hides the floating player bar while editing. */
+    var editMode by mutableStateOf(false)
+
     override fun reset() {
         topAppBarState.heightOffset = 0f
         coroutineScope.launch {
@@ -266,6 +269,6 @@ private const val ITEM_HEIGHT_RATIO = 3
 private fun LibraryGridPreview() {
     LibraryGrid(
         paddingValues = PaddingValues(vertical = 16.dp),
-        categories = LibraryCategory.entries.map { it to true },
+        categories = libraryTabCategories.map { it to true },
     ) {}
 }

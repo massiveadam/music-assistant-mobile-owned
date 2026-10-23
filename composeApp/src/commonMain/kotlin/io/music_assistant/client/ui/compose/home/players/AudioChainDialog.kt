@@ -27,10 +27,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import io.music_assistant.client.data.model.client.PlayerData
+import io.music_assistant.client.data.model.client.ProviderDetails
 import io.music_assistant.client.data.model.client.QueueTrack
-import io.music_assistant.client.data.model.client.items.QualityTier
 import io.music_assistant.client.data.model.client.items.description
-import io.music_assistant.client.data.model.client.items.qualityTier
 import io.music_assistant.client.data.model.server.AudioFormat
 import musicassistantclient.composeapp.generated.resources.Res
 import musicassistantclient.composeapp.generated.resources.quality_dialog_input
@@ -42,6 +41,7 @@ import org.jetbrains.compose.resources.stringResource
 fun AudioChainDialog(
     queueTrack: QueueTrack,
     player: PlayerData,
+    providerDetails: (String) -> ProviderDetails?,
     onDismissRequest: () -> Unit,
 ) {
     val playerNames: Map<String, String> = buildMap {
@@ -49,6 +49,7 @@ fun AudioChainDialog(
         player.childrenBinds.forEach { put(it.id, it.name) }
         player.parentBind?.let { put(it.id, it.name) }
     }
+
     Dialog(onDismissRequest = onDismissRequest) {
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -63,19 +64,19 @@ fun AudioChainDialog(
 
                 ChainStage(
                     header = stringResource(Res.string.quality_dialog_input),
-                    title = queueTrack.provider
-                        ?.substringBefore("--")
-                        ?.replaceFirstChar { it.uppercaseChar() },
+                    name = queueTrack.provider?.let(providerDetails)?.name,
                     format = queueTrack.format,
                 )
 
-                queueTrack.dsp.orEmpty().forEach { (playerId, dspSettings) ->
+                queueTrack.audioProcessingChain?.outputs.orEmpty().forEach { output ->
                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                    val playerName = playerNames[playerId] ?: playerId
+
                     ChainStage(
                         header = stringResource(Res.string.quality_dialog_output),
-                        title = playerName,
-                        format = dspSettings.outputFormat,
+                        name = output.playerIds.orEmpty().let {
+                            it.firstOrNull()?.let { id -> playerNames[id] }
+                        },
+                        format = output.format,
                     )
                 }
             }
@@ -84,37 +85,9 @@ fun AudioChainDialog(
 }
 
 @Composable
-private fun QualityBadge(tier: QualityTier) {
-    val isLq = tier == QualityTier.LQ
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(6.dp))
-            .background(
-                if (isLq) {
-                    MaterialTheme.colorScheme.surfaceVariant
-                } else {
-                    MaterialTheme.colorScheme.primaryContainer
-                },
-            )
-            .padding(horizontal = 6.dp, vertical = 1.dp),
-    ) {
-        Text(
-            text = tier.name,
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.Bold,
-            color = if (isLq) {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            } else {
-                MaterialTheme.colorScheme.onPrimaryContainer
-            },
-        )
-    }
-}
-
-@Composable
 private fun ChainStage(
     header: String,
-    title: String?,
+    name: String?,
     format: AudioFormat?,
 ) {
     Row(
@@ -139,7 +112,7 @@ private fun ChainStage(
         Box(
             modifier = Modifier
                 .width(2.dp)
-                .height(if (title != null && format != null) 56.dp else 32.dp)
+                .height(if (name != null && format != null) 56.dp else 32.dp)
                 .background(MaterialTheme.colorScheme.outlineVariant),
         )
         Spacer(modifier = Modifier.width(16.dp))
@@ -148,7 +121,7 @@ private fun ChainStage(
                 .padding(vertical = 6.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            title?.let {
+            name?.let {
                 Text(
                     text = it,
                     style = MaterialTheme.typography.bodyLarge,
@@ -165,7 +138,6 @@ private fun ChainStage(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    it.qualityTier?.let { tier -> QualityBadge(tier) }
                 }
             }
         }

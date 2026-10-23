@@ -14,6 +14,13 @@ object APICommands {
     const val PLAYERS_CMD_UNGROUP = "$PLAYERS_CMD/ungroup"
     const val PLAYERS_SLEEP_TIMER_SET = "players/sleep_timer/set"
     const val PLAYERS_SLEEP_TIMER_CLEAR = "players/sleep_timer/clear"
+    const val PLAYERS_ADD_CURRENTLY_PLAYING_TO_FAVORITES = "players/add_currently_playing_to_favorites"
+
+    // Announcements. The command answers only after the announcement has finished playing.
+    // An empty engine list means the server cannot speak a typed message (schema 46+).
+    const val PLAYERS_CMD_PLAY_ANNOUNCEMENT = "$PLAYERS_CMD/play_announcement"
+    const val PLAYERS_TTS_ENGINES = "players/tts_engines"
+    const val CONFIG_PLAYERS_GET_VALUE = "config/players/get_value"
 
     // Player Queue commands
     const val PLAYER_QUEUES_ALL = "player_queues/all"
@@ -29,6 +36,7 @@ object APICommands {
     const val PLAYER_QUEUES_DONT_STOP_THE_MUSIC = "player_queues/dont_stop_the_music"
     const val PLAYER_QUEUES_CROSSFADE = "player_queues/crossfade"
     const val PLAYER_QUEUES_SET_PLAYBACK_SPEED = "player_queues/set_playback_speed"
+    const val PLAYER_QUEUES_OVERLAY = "player_queues/overlay"
 
     // Playlist commands
     const val MUSIC_PLAYLISTS_LIBRARY_ITEMS = "music/playlists/library_items"
@@ -46,6 +54,7 @@ object APICommands {
 
     // Audiobook commands
     const val MUSIC_AUDIOBOOKS_LIBRARY_ITEMS = "music/audiobooks/library_items"
+    const val MUSIC_AUDIOBOOKS_GET_COLLECTION = "music/audiobooks/get_collection"
 
     // Genre commands
     const val MUSIC_GENRES_LIBRARY_ITEMS = "music/genres/library_items"
@@ -84,6 +93,7 @@ object APICommands {
 
     // Browse
     const val MUSIC_BROWSE = "music/browse"
+    const val MUSIC_SOUND_EFFECTS = "music/sound_effects"
 
     // Search and recommendations
     const val MUSIC_SEARCH = "music/search"
@@ -92,8 +102,8 @@ object APICommands {
     // Contents of a single recommendation row. Exists on servers (2.10+) whose
     // MUSIC_RECOMMENDATIONS response returns rows without embedded items
     const val MUSIC_RECOMMENDATIONS_ITEMS = "music/recommendations/items"
-    const val PROVIDERS_MANIFESTS = "providers/manifests"
     const val PROVIDERS = "providers"
+    const val PROVIDERS_ICON = "providers/icon"
 
     // Items
     const val MUSIC_ITEM_BY_URI = "music/item_by_uri"
@@ -116,6 +126,9 @@ object APICommands {
     const val AI_RADIO_START = "ai_radio/start"
     const val AI_RADIO_STOP = "ai_radio/stop"
     const val AI_RADIO_STATUS = "ai_radio/status"
+    const val AI_RADIO_HOSTS_LIST = "ai_radio/hosts/list"
+    const val AI_RADIO_QUEUE_DJ_STATUS = "ai_radio/queue_dj/status"
+    const val AI_RADIO_QUEUE_DJ_SET = "ai_radio/queue_dj/set"
 
     // DSP commands
     const val CONFIG_PLAYERS_DSP_GET = "config/players/dsp/get"

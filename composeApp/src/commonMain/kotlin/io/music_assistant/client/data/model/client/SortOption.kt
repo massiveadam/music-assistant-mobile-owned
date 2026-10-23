@@ -17,7 +17,7 @@ enum class SortField(val serverKey: String, val displayName: String) {
     PLAY_COUNT("play_count", "Play count"),
     YEAR("year", "Year"),
     POSITION("position", "Position"),
-    ARTIST_NAME("artist_name", "Artist"),
+    ARTIST_NAME("album_artist_name", "Artist"),
     RELEASE_DATE("release_date", "Release date"),
 }
 
@@ -76,7 +76,12 @@ object SortConfig {
         SubItemContext.ARTIST_TRACKS -> listOf(SortField.NAME, SortField.DURATION)
         SubItemContext.ALBUM_TRACKS -> listOf(SortField.ORIGINAL)
         SubItemContext.PLAYLIST_ITEMS -> listOf(SortField.ORIGINAL)
+        SubItemContext.COLLECTION_ITEMS -> listOf(SortField.ORIGINAL)
         SubItemContext.PODCAST_EPISODES -> listOf(SortField.NAME, SortField.RELEASE_DATE, SortField.DURATION)
+        SubItemContext.ARTIST_TOP_TRACKS -> listOf(SortField.ORIGINAL, SortField.NAME, SortField.DURATION)
+        SubItemContext.ARTIST_ALL_ALBUMS,
+        SubItemContext.ARTIST_LIBRARY_ALBUMS,
+        -> listOf(SortField.ORIGINAL, SortField.NAME, SortField.ARTIST_NAME, SortField.YEAR)
     }
 
     /**
@@ -89,7 +94,12 @@ object SortConfig {
         SubItemContext.ARTIST_ALBUMS -> SortOption(SortField.YEAR, descending = true)
         SubItemContext.ALBUM_TRACKS -> SortOption(SortField.ORIGINAL)
         SubItemContext.PLAYLIST_ITEMS -> SortOption(SortField.ORIGINAL)
+        SubItemContext.COLLECTION_ITEMS -> SortOption(SortField.ORIGINAL)
         SubItemContext.PODCAST_EPISODES -> SortOption(SortField.RELEASE_DATE, descending = true)
+        SubItemContext.ARTIST_TOP_TRACKS,
+        SubItemContext.ARTIST_ALL_ALBUMS,
+        SubItemContext.ARTIST_LIBRARY_ALBUMS,
+        -> SortOption(SortField.ORIGINAL)
         else -> SortOption(SortField.NAME)
     }
 }
@@ -100,12 +110,26 @@ enum class SubItemContext {
     ALBUM_TRACKS,
     PLAYLIST_ITEMS,
     PODCAST_EPISODES,
+
+    // Books of an audiobook series, fixed in the server's series order.
+    COLLECTION_ITEMS,
+
+    // Artist "View all" screens. Distinct from ARTIST_ALBUMS (Android Auto), so each list keeps
+    // its own remembered sort.
+    ARTIST_TOP_TRACKS,
+    ARTIST_ALL_ALBUMS,
+    ARTIST_LIBRARY_ALBUMS,
 }
 
 fun <T> List<T>.clientSorted(option: SortOption, context: SubItemContext? = null): List<T> {
+    // Outside album and playlist tracks, ORIGINAL is the order the server delivered.
+    val hasOriginalComparator = context == SubItemContext.ALBUM_TRACKS || context == SubItemContext.PLAYLIST_ITEMS
+    if (option.field == SortField.ORIGINAL && !hasOriginalComparator) {
+        return if (option.descending) reversed() else this
+    }
     val comparator: Comparator<T> = when (option.field) {
         SortField.ORIGINAL -> if (context == SubItemContext.PLAYLIST_ITEMS) {
-            compareBy<T, Int?>(nullsLast()) { (it as? Track)?.position }
+            compareBy<T, Int?>(nullsLast()) { (it as? PlayableItem)?.position }
         } else {
             compareBy<T, Int?>(nullsLast()) {
                 (it as? Track)?.discNumber

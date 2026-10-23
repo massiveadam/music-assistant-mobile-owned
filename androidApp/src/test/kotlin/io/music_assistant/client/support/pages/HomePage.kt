@@ -22,6 +22,8 @@ import io.music_assistant.client.data.model.server.ServerMediaItem
 import io.music_assistant.client.support.get
 import io.music_assistant.client.ui.compose.home.HomeScreenSemantics
 import musicassistantclient.composeapp.generated.resources.Res
+import musicassistantclient.composeapp.generated.resources.home_edit_rows
+import musicassistantclient.composeapp.generated.resources.home_save_rows
 import musicassistantclient.composeapp.generated.resources.library_error
 import musicassistantclient.composeapp.generated.resources.cd_album_item
 import musicassistantclient.composeapp.generated.resources.nav_home
@@ -55,6 +57,16 @@ class HomePage(composeTestRule: ComposeTestRule) : ComposePage(composeTestRule) 
         }
         composeTestRule.waitForIdle()
         composeTestRule.onNodeWithContentDescription("Refresh").assertIsDisplayed().performClick()
+        return this
+    }
+
+    fun editRows(): HomePage {
+        composeTestRule.onNodeWithContentDescription(Res.string.home_edit_rows.get()).performClick()
+        return this
+    }
+
+    fun saveRows(): HomePage {
+        composeTestRule.onNodeWithContentDescription(Res.string.home_save_rows.get()).performClick()
         return this
     }
 

@@ -5,26 +5,38 @@ import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import io.music_assistant.client.api.Request
 import io.music_assistant.client.api.ServiceClient
+import io.music_assistant.client.api.fetchAllPages
 import io.music_assistant.client.data.MainDataSource
+import io.music_assistant.client.data.model.client.PlayerData
 import io.music_assistant.client.data.model.client.QueueOption
 import io.music_assistant.client.data.model.client.items.AppMediaItem
 import io.music_assistant.client.data.model.client.items.Genre
 import io.music_assistant.client.data.model.client.items.MarkableItem
 import io.music_assistant.client.data.model.client.items.Playlist
+import io.music_assistant.client.data.model.server.supportsFavoriteCurrentlyPlaying
+import io.music_assistant.client.data.play.PlayDispatcher
+import io.music_assistant.client.data.play.PlayRequest
 import io.music_assistant.client.data.repository.MediaItemChange
 import io.music_assistant.client.data.repository.MediaItemRepository
 import io.music_assistant.client.ui.compose.common.items.LibraryActions
 import io.music_assistant.client.ui.compose.common.items.PlaylistActions
 import io.music_assistant.client.ui.compose.common.items.ProgressActions
+import io.music_assistant.client.utils.HasConnectionData
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import musicassistantclient.composeapp.generated.resources.Res
 import musicassistantclient.composeapp.generated.resources.toast_added_to_playlist
 import musicassistantclient.composeapp.generated.resources.toast_error_add_playlist
 import musicassistantclient.composeapp.generated.resources.toast_error_create_playlist
+import musicassistantclient.composeapp.generated.resources.toast_error_favorite_stream_track
 import musicassistantclient.composeapp.generated.resources.toast_error_mark_played
 import musicassistantclient.composeapp.generated.resources.toast_error_mark_unplayed
+import musicassistantclient.composeapp.generated.resources.toast_favorited_stream_track
 import musicassistantclient.composeapp.generated.resources.toast_marked_played
 import musicassistantclient.composeapp.generated.resources.toast_marked_unplayed
 import musicassistantclient.composeapp.generated.resources.toast_no_uri
@@ -38,6 +50,7 @@ class ActionsViewModel(
     private val apiClient: ServiceClient,
     private val dataSource: MainDataSource,
     private val mediaItemRepository: MediaItemRepository,
+    private val playDispatcher: PlayDispatcher,
 ) : ViewModel(), PlaylistActions, LibraryActions, ProgressActions {
     private val _toasts = MutableSharedFlow<String>()
     val toasts = _toasts.asSharedFlow()
@@ -65,9 +78,24 @@ class ActionsViewModel(
      */
     override fun onFavoriteClick(item: AppMediaItem) = dataSource.toggleFavorite(item)
 
+    /** Favourites the on-air song for a radio stream. See [MainDataSource.favoriteCurrentlyPlaying]. */
+    fun onFavoriteStreamClick(playerData: PlayerData) {
+        viewModelScope.launch {
+            dataSource.favoriteCurrentlyPlaying(playerData)
+                .onSuccess { _toasts.emit(getString(Res.string.toast_favorited_stream_track)) }
+                .onFailure { _toasts.emit(getString(Res.string.toast_error_favorite_stream_track)) }
+        }
+    }
+
+    /** Session-scoped support; the player's current stream title is observed separately. */
+    val streamFavoriteSupported: StateFlow<Boolean> =
+        apiClient.sessionState
+            .map { supportsFavoriteCurrentlyPlaying((it as? HasConnectionData)?.serverInfo?.schemaVersion) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), false)
+
     override suspend fun getEditablePlaylists(): List<Playlist> =
-        mediaItemRepository.fetchMediaItems(Request.Playlist.listLibrary())
-            .getOrNull()
+        Request.Playlist.listLibrary()
+            .fetchAllPages { mediaItemRepository.fetchMediaItems(it).getOrNull() }
             ?.filterIsInstance<Playlist>()
             // Smart/dynamic playlists are rule-generated; tracks can't be added manually.
             ?.filter { it.isEditable && !it.isDynamic }
@@ -107,10 +135,9 @@ class ActionsViewModel(
     }
 
     /**
-     * [position] must be the 0-based index in the server's playlist order, which callers take from
-     * the displayed list. That only matches while playlist items stay in ORIGINAL ascending order —
-     * see `SortConfig.isUserSortable`. Restoring a sort option for PLAYLIST_ITEMS makes this delete
-     * the wrong track, so resolve the original index first if that ever changes.
+     * [position] is the item's `PlayableItem.position` exactly as the server emitted it for this
+     * playlist (providers number from 1 and delete `items[position - 1]`), so the displayed order
+     * or an active filter never affects which item is removed.
      */
     fun removeFromPlaylist(
         playlistId: String,
@@ -121,7 +148,7 @@ class ActionsViewModel(
             apiClient.sendRequest(
                 Request.Playlist.removeTracks(
                     playlistId = playlistId,
-                    positions = listOf(position + 1), // +1 because server uses 1-based indexing
+                    positions = listOf(position),
                 ),
             ).onSuccess {
                 onSuccess()
@@ -165,27 +192,24 @@ class ActionsViewModel(
         }
     }
 
-    fun getProviderIcon(provider: String) = dataSource.providerIcon(provider)
-
     fun onPlayClick(
         item: AppMediaItem,
         option: QueueOption,
         radio: Boolean,
     ) {
-        viewModelScope.launch {
-            val queueId = dataSource.selectedPlayer?.queueOrPlayerId ?: return@launch
-            item.mediaUri?.let { mediaUri ->
-                Logger.withTag("PlayDispatch")
-                    .i { "ActionsViewModel: uri=$mediaUri option=$option radio=$radio queue=$queueId" }
-                apiClient.sendRequest(
-                    Request.Library.play(
-                        item = item,
-                        queueOrPlayerId = queueId,
-                        option = option,
-                        endlessMixMode = radio && item !is Genre,
-                    ),
-                )
-            }
+        val queueId = dataSource.selectedPlayer?.queueOrPlayerId ?: return
+        item.mediaUri?.let { mediaUri ->
+            Logger.withTag("PlayDispatch")
+                .i { "ActionsViewModel: uri=$mediaUri option=$option radio=$radio queue=$queueId" }
+            playDispatcher.play(
+                PlayRequest(
+                    queueOrPlayerId = queueId,
+                    media = listOf(mediaUri),
+                    option = option,
+                    endlessMixMode = radio && item !is Genre,
+                ),
+            )
+
         }
     }
 

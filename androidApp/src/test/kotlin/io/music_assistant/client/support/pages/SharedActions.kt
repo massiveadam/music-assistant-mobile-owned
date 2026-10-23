@@ -9,6 +9,7 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.isDisplayed
 import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -31,6 +32,7 @@ import musicassistantclient.composeapp.generated.resources.cd_current_player
 import musicassistantclient.composeapp.generated.resources.cd_filter
 import musicassistantclient.composeapp.generated.resources.cd_playing
 import musicassistantclient.composeapp.generated.resources.common_apply
+import musicassistantclient.composeapp.generated.resources.common_back
 import musicassistantclient.composeapp.generated.resources.library_empty
 import musicassistantclient.composeapp.generated.resources.nav_home
 import musicassistantclient.composeapp.generated.resources.nav_library
@@ -204,6 +206,14 @@ fun <T : ComposePage> T.expandPlayer(
     return ExpandedPlayerPage(name, playing, item, composeTestRule).assertOnPage()
 }
 
+fun <T : ComposePage> T.assertFloatingBar(showing: Boolean): T {
+    composeTestRule.waitUntil {
+        composeTestRule.onAllNodesWithTag(FloatingBarSemantics.TAG)
+            .fetchSemanticsNodes().isNotEmpty() == showing
+    }
+    return this
+}
+
 fun <T : ComposePage> T.assertReconnectingBanner(showing: Boolean): T {
     if (showing) {
         composeTestRule.onNodeWithText(Res.string.banner_reconnecting.get(1)).assertIsDisplayed()
@@ -237,6 +247,11 @@ fun <T : ComposePage> T.enableFilter(action: (FilterSheetPage) -> Unit): T {
 fun <T : ComposePage> T.assertNoItems(): T {
     composeTestRule.onNodeWithText(Res.string.library_empty.get()).assertIsDisplayed()
     return this
+}
+
+fun <T : ComposePage, U : Page> T.clickBack(destination: U): U {
+    composeTestRule.onNodeWithContentDescription(Res.string.common_back.get()).performClick()
+    return destination.assertOnPage()
 }
 
 private fun mediaItemMatcher(

@@ -1,12 +1,14 @@
 package io.music_assistant.client.ui.compose.common
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -60,11 +62,14 @@ data object OverflowMenuDivider : OverflowMenuEntry
 
 data class OverflowMenuOption(
     val title: String,
+    // Optional second line under [title], e.g. the current value of a setting.
+    val subtitle: String? = null,
     val icon: ImageVector? = null,
     val trailingIcon: ImageVector? = null,
     // Optional composable leading icon; takes precedence over [icon] for non-vector
     // glyphs (e.g. an MDI font icon via PlayerIcon/MdiIcon).
     val leadingContent: (@Composable () -> Unit)? = null,
+    val enabled: Boolean = true,
     val onClick: () -> Unit,
 ) : OverflowMenuEntry
 
@@ -76,6 +81,7 @@ fun OverflowMenuOption.MenuItem(onClose: () -> Unit) {
             onClick()
             onClose()
         },
+        enabled = enabled,
         leadingIcon = leadingContent ?: icon?.let {
             {
                 Icon(
@@ -93,7 +99,16 @@ fun OverflowMenuOption.MenuItem(onClose: () -> Unit) {
             }
         },
         text = {
-            Text(modifier = Modifier.padding(all = 4.dp), text = title)
+            Column(modifier = Modifier.padding(all = 4.dp)) {
+                Text(text = title)
+                subtitle?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         },
     )
 }

@@ -250,7 +250,6 @@ class PlayerRequestFactoryTest {
                         track = item,
                         isPlayable = true,
                         format = null,
-                        dsp = null,
                         provider = "test",
                     ),
                     radioSource = emptyList(),

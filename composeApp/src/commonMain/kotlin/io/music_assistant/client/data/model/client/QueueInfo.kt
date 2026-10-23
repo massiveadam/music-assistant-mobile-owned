@@ -13,7 +13,7 @@ data class QueueInfo(
     /**
      * Unix epoch seconds (UTC) when [elapsedTime] was last recomputed
      * server-side. Drives [isBefore]. Optimistic writes bump this above
-     * the last known server stamp; see `LocalPlayerController`.
+     * the last known server stamp; see `LocalPlayerAdapter`.
      */
     val elapsedTimeLastUpdated: Double?,
     val currentItem: QueueTrack?,
@@ -31,7 +31,28 @@ data class QueueInfo(
     /** Server-derived: the active source is a dynamic/smart playlist (rule-generated). */
     val isDynamicPlaylist: Boolean = false,
     val playbackSpeed: Double? = null,
+    /** Ambient sound overlay, or null when the server does not support the feature. */
+    val overlay: QueueOverlay? = null,
+    /** The server runs a play action on this queue, started by any client. */
+    val playActionInProgress: Boolean = false,
 )
+
+/**
+ * A looping sound effect mixed into the queue stream by the server. [sourceUri] and
+ * [sourceName] keep the last selected sound while [enabled] is false. [volume] is relative
+ * to the music in percent (100 = equally loud).
+ */
+data class QueueOverlay(
+    val enabled: Boolean,
+    val sourceUri: String?,
+    val sourceName: String?,
+    val volume: Int,
+) {
+    companion object {
+        /** The server default: the sound plays as loud as the music. */
+        const val DEFAULT_VOLUME = 100
+    }
+}
 
 /** Strict-older-than on [QueueInfo.elapsedTimeLastUpdated]. Callers match ids first. */
 fun QueueInfo.isBefore(other: QueueInfo): Boolean {

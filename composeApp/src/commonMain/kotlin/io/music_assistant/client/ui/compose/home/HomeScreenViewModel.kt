@@ -22,8 +22,11 @@ import io.music_assistant.client.data.model.server.events.MediaItemAddedEvent
 import io.music_assistant.client.data.model.server.events.MediaItemDeletedEvent
 import io.music_assistant.client.data.model.server.supportsLeaderLeave
 import io.music_assistant.client.data.model.server.supportsSleepTimer
+import io.music_assistant.client.data.play.PlayDispatcher
+import io.music_assistant.client.data.play.PlayRequest
 import io.music_assistant.client.data.repository.MediaItemRepository
-import io.music_assistant.client.player.sendspin.SendspinState
+import io.music_assistant.client.data.repository.fetchRecommendationRowItems
+import io.music_assistant.client.data.repository.fetchRecommendationRows
 import io.music_assistant.client.settings.SettingsRepository
 import io.music_assistant.client.ui.compose.common.DataState
 import io.music_assistant.client.ui.compose.common.action.PlayerAction
@@ -33,6 +36,7 @@ import io.music_assistant.client.utils.DataConnectionState
 import io.music_assistant.client.utils.HasConnectionData
 import io.music_assistant.client.utils.SessionState
 import io.music_assistant.client.utils.resultAs
+import io.music_assistant.sendspin.api.PlayerState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
@@ -45,17 +49,34 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlin.time.Duration.Companion.seconds
 
 val HomeScreenViewModel.PlayersState.Data.selectedPlayer: PlayerData?
     get() = selectedPlayerIndex?.let(playerData::getOrNull)
+
+// Resolved against the same list it indexes: an index taken from a separately scheduled
+// flow can belong to the previous list, and the pager would then land on (and persist)
+// whichever player shifted into that slot.
+internal fun List<PlayerData>.indexOfPlayer(id: String?): Int? =
+    id?.let { indexOfFirst { it.playerId == id }.takeIf { it >= 0 } }
+
+// Deep-link player lookup, as the web frontend does it: selectable players only, case-insensitive.
+// An id match wins over a name match because names are not unique.
+internal fun List<Player>.findByIdOrName(query: String): Player? =
+    filter { it.isSelectable }.let { candidates ->
+        candidates.find { it.id.equals(query, ignoreCase = true) }
+            ?: candidates.find { it.name.equals(query, ignoreCase = true) }
+    }
 
 @OptIn(FlowPreview::class)
 class HomeScreenViewModel(
@@ -63,12 +84,14 @@ class HomeScreenViewModel(
     private val dataSource: MainDataSource,
     private val settings: SettingsRepository,
     private val mediaItemRepository: MediaItemRepository,
+    private val playDispatcher: PlayDispatcher,
 ) : ViewModel() {
     private val jobs = mutableListOf<Job>()
     private var loadDataJob: Job? = null
     private var homeOwner: String? = null
     private var albumRefreshJob: Job? = null
     private val albumSync = AlbumSyncCompletionTracker()
+    private var deepLinkPlayerJob: Job? = null
 
     private val _links = MutableSharedFlow<String>()
     val links = _links.asSharedFlow()
@@ -101,6 +124,11 @@ class HomeScreenViewModel(
 
     /** User toggle: whether the now-playing slider draws the buffered-ahead segment. */
     val showBufferVisualization = settings.showBufferVisualization
+
+    /** One-time hint that the expanded player swipes between players. */
+    val playerSwipeHintShown = settings.playerSwipeHintShown
+
+    fun onPlayerSwipeHintShown() = settings.setPlayerSwipeHintShown()
 
     /** Server-side sleep timers exist from schema 35 on; hide the whole feature below that. */
     val sleepTimerSupported: StateFlow<Boolean> =
@@ -271,13 +299,6 @@ class HomeScreenViewModel(
             return
         }
 
-        if (!mediaItemRepository.supportsRecommendationRowItems()) {
-            setRecommendationRows(
-                folders.map { RecommendationRowState(it, DataState.Data(it.items.orEmpty())) },
-            )
-            return
-        }
-
         // Show every row as a loading placeholder, then fetch each row's items
         // as its own job.
         setRecommendationRows(folders.map { RecommendationRowState(it, DataState.Loading()) })
@@ -339,18 +360,16 @@ class HomeScreenViewModel(
     ) {
         dataSource.selectedPlayer?.queueOrPlayerId?.let { queueId ->
             item.mediaUri?.let { mediaUri ->
-                viewModelScope.launch {
-                    Logger.withTag("PlayDispatch")
-                        .i { "HomeScreenViewModel: uri=$mediaUri option=$option radio=$radio queue=$queueId" }
-                    apiClient.sendRequest(
-                        Request.Library.play(
-                            item = item,
-                            queueOrPlayerId = queueId,
-                            option = option,
-                            endlessMixMode = radio && item !is Genre,
-                        ),
-                    )
-                }
+                Logger.withTag("PlayDispatch")
+                    .i { "HomeScreenViewModel: uri=$mediaUri option=$option radio=$radio queue=$queueId" }
+                playDispatcher.play(
+                    PlayRequest(
+                        queueOrPlayerId = queueId,
+                        media = listOf(mediaUri),
+                        option = option,
+                        endlessMixMode = radio && item !is Genre,
+                    ),
+                )
             }
         }
     }
@@ -409,30 +428,32 @@ class HomeScreenViewModel(
     private fun watchPlayersData(): Job = viewModelScope.launch {
         combine(
             dataSource.playersData,
+            dataSource.selectedPlayerId,
             dataSource.sendspinState,
-        ) { playerData, sendspinState ->
-            playerData to sendspinState
-        }.collect { (playerData, sendspinState) ->
+        ) { playerData, selectedId, sendspinState ->
+            Triple(playerData, selectedId, sendspinState)
+        }.collect { (playerData, selectedId, sendspinState) ->
             // Update when in Loading or Data state
             // This allows transitioning from Loading to Data and updating existing Data
             // Don't update terminal states (Disconnected, NoAuth, NoServer)
             val currentState = _playersState.value
             if (currentState is PlayersState.Loading || currentState is PlayersState.Data) {
+                // The pager shows only players the app can act on; the player list shows all.
+                fun dataOf(all: List<PlayerData>): PlayersState.Data {
+                    val pageable = all.filter { it.player.isSelectable }
+                    return PlayersState.Data(
+                        playerData = pageable,
+                        selectedPlayerIndex = pageable.indexOfPlayer(selectedId),
+                        localPlayerId = dataSource.localPlayer.value?.playerId,
+                        sendspinState = sendspinState,
+                        allPlayerData = all,
+                    )
+                }
                 _playersState.update {
                     when (playerData) {
-                        is DataState.Data -> PlayersState.Data(
-                            playerData.data,
-                            dataSource.selectedPlayerIndex.value,
-                            dataSource.localPlayer.value?.playerId,
-                            sendspinState,
-                        )
-
-                        is DataState.Stale -> PlayersState.Data(
-                            playerData.data,  // Show stale data as normal data
-                            dataSource.selectedPlayerIndex.value,
-                            dataSource.localPlayer.value?.playerId,
-                            sendspinState,
-                        )
+                        is DataState.Data -> dataOf(playerData.data)
+                        // Show stale data as normal data
+                        is DataState.Stale -> dataOf(playerData.data)
 
                         is DataState.Error -> PlayersState.Error
                         is DataState.Loading -> PlayersState.Loading
@@ -443,16 +464,23 @@ class HomeScreenViewModel(
         }
     }
 
-    private fun watchSelectedPlayerData(): Job = viewModelScope.launch {
-        dataSource.selectedPlayerIndex.filterNotNull().collect { index ->
-            val dataState = _playersState.value as? PlayersState.Data
-            dataState?.let { state ->
-                _playersState.update { state.copy(selectedPlayerIndex = index) }
-            }
+    fun selectPlayer(player: Player) = dataSource.selectPlayer(player)
+
+    /**
+     * Selects the player that a deep link names by id or name. Waits for the player list
+     * (cold launch) for a bounded time; no match in that time keeps the current selection.
+     */
+    fun selectPlayerByIdOrName(query: String) {
+        deepLinkPlayerJob?.cancel()
+        deepLinkPlayerJob = viewModelScope.launch {
+            withTimeoutOrNull(DEEP_LINK_PLAYER_TIMEOUT) {
+                dataSource.playersData
+                    .mapNotNull { state -> state.dataOrNull?.map { it.player }?.findByIdOrName(query) }
+                    .first()
+            }?.let(dataSource::selectPlayer)
+                ?: Logger.withTag("HomeScreenVM").w { "Deep link: no selectable player '$query'" }
         }
     }
-
-    fun selectPlayer(player: Player) = dataSource.selectPlayer(player)
     fun playerAction(playerId: String, action: PlayerAction) =
         dataSource.playerAction(playerId, action)
 
@@ -505,12 +533,15 @@ class HomeScreenViewModel(
             val playerData: List<PlayerData>,
             val selectedPlayerIndex: Int? = null,
             val localPlayerId: String? = null,
-            val sendspinState: SendspinState? = null,
+            val sendspinState: PlayerState? = null,
+            /** Every listed player, including those left out of [playerData]. */
+            val allPlayerData: List<PlayerData> = playerData,
         ) : PlayersState()
     }
 
     private companion object {
         private const val BUFFER_REAL_INTERVAL = 500L
+        private val DEEP_LINK_PLAYER_TIMEOUT = 10.seconds
     }
 }
 

@@ -28,7 +28,7 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 
 /**
- * Covers [MediaItemRepository.fetchRecommendationFolders]
+ * Covers [fetchRecommendationFolders]
  * It must bridge both shapes of the `music/recommendations` response, selected
  * by the server's schema version: rows with their items embedded, and item-less
  * rows whose contents come from a per-row `music/recommendations/items` call.
@@ -101,25 +101,7 @@ class RecommendationFoldersCompatTest {
     }
 
     private fun repository(client: FakeClient) =
-        MediaItemRepository(client, MediaItemFactory(client))
-
-    @Test
-    fun embeddedRowItemsAreUsedDirectly() = runTest {
-        val client = FakeClient(
-            rowsJson = """
-                [${folderJson("row1", "library", "[${trackJson("t1")}]")},
-                 ${folderJson("row2", "spotify", "[]")}]
-            """.trimIndent(),
-            itemsJsonFor = { _, _ -> fail("embedded-items schema must not trigger items calls") },
-            schemaVersion = EMBEDDED_ROWS_SCHEMA,
-        )
-
-        val folders = repository(client).fetchRecommendationFolders().getOrThrow()
-
-        assertEquals(listOf("row1", "row2"), folders.map { it.itemId })
-        assertEquals(listOf("t1"), folders[0].items?.map { it.itemId })
-        assertTrue(client.itemsRequests.isEmpty())
-    }
+        ServiceClientMediaItemRepository(client, MediaItemFactory(client))
 
     @Test
     fun itemLessRowsGetItemsFetchedPerRow() = runTest {

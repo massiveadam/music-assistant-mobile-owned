@@ -169,7 +169,6 @@ object PlayerDataFixtures {
             track = this,
             isPlayable = true,
             format = null,
-            dsp = null,
             provider = null,
         )
     }

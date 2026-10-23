@@ -6,17 +6,19 @@ import io.music_assistant.client.api.ConnectionInfo
 import io.music_assistant.client.api.Request
 import io.music_assistant.client.api.ServiceClient
 import io.music_assistant.client.data.model.client.MediaType
+import io.music_assistant.client.data.model.server.AudioFidelity
 import io.music_assistant.client.data.model.server.AudioFormat
+import io.music_assistant.client.data.model.server.AudioOutputDetails
+import io.music_assistant.client.data.model.server.AudioProcessingChain
 import io.music_assistant.client.data.model.server.AuthProvider
-import io.music_assistant.client.data.model.server.DSPSettings
 import io.music_assistant.client.data.model.server.EventType
 import io.music_assistant.client.data.model.server.PlayerState
-import io.music_assistant.client.data.model.server.ProviderManifest
 import io.music_assistant.client.data.model.server.SearchResult
 import io.music_assistant.client.data.model.server.ServerInfo
 import io.music_assistant.client.data.model.server.ServerMediaItem
 import io.music_assistant.client.data.model.server.ServerPlayer
 import io.music_assistant.client.data.model.server.ServerPlayerMedia
+import io.music_assistant.client.data.model.server.ServerProviderInstance
 import io.music_assistant.client.data.model.server.ServerQueue
 import io.music_assistant.client.data.model.server.ServerQueueItem
 import io.music_assistant.client.data.model.server.ServerUser
@@ -57,10 +59,12 @@ class FakeServiceClient : ServiceClient {
 
     private val players = mutableListOf<ServerPlayer>()
     private val playerAudioFormats = mutableMapOf<String, AudioFormat>()
+    private val playerAudioFidelities = mutableMapOf<String, AudioFidelity>()
     private val queues = mutableListOf<ServerQueue>()
     private val queueItems = mutableMapOf<String, List<ServerQueueItem>>()
     private val mediaItemStore = FakeMediaItemStore()
     private val shortcuts = mutableListOf<String>()
+    private val providers = mutableListOf<ServerProviderInstance>()
 
     val username = "user"
     val password = "password"
@@ -81,31 +85,26 @@ class FakeServiceClient : ServiceClient {
         }
 
         return when (request.command) {
-            APICommands.PROVIDERS_MANIFESTS -> {
+            APICommands.PROVIDERS -> {
                 Result.success(
                     answer(
                         request = request,
-                        result = emptyList<ProviderManifest>(),
+                        result = providers,
                     ),
                 )
             }
 
             APICommands.AUTH_ME -> {
-                if (legacyVersion == LegacyVersion.V2_8) {
-                    Result.success(
-                        answer(
-                            request = request,
-                            result = emptyMap<String, String>(),
-                        ),
-                    )
-                } else {
-                    Result.success(
-                        answer(
-                            request = request,
-                            result = ServerUser(preferences = ServerUserPreferences(shortcuts)),
-                        ),
-                    )
-                }
+                Result.success(
+                    answer(
+                        request = request,
+                        result = if (shortcuts.isNotEmpty()) {
+                            ServerUser(preferences = ServerUserPreferences(shortcuts))
+                        } else {
+                            ServerUser()
+                        },
+                    ),
+                )
             }
 
             APICommands.AUTH_PROVIDERS -> {
@@ -409,7 +408,7 @@ class FakeServiceClient : ServiceClient {
                                 uri = track.uri,
                                 mediaType = track.mediaType,
                                 title = track.name,
-                                queueId = queueId,
+                                sourceId = queueId,
                             )
                         },
                     )
@@ -504,7 +503,7 @@ class FakeServiceClient : ServiceClient {
                                 uri = track.uri,
                                 mediaType = track.mediaType,
                                 title = track.name,
-                                queueId = queueId,
+                                sourceId = queueId,
                             )
                         },
                     )
@@ -514,8 +513,14 @@ class FakeServiceClient : ServiceClient {
             }
 
             APICommands.MUSIC_ARTISTS_TOP_TRACKS -> {
-                val artist = findItem(request)
-                val tracks = mediaItemStore.getTracksByArtist(artist, topOnly = true)
+                val tracks = when (request.getArg("provider_instance_id_or_domain")) {
+                    ServerMediaItem.LIBRARY_PROVIDER -> mediaItemStore.getTopTracksByLibraryArtist(
+                        libraryId = request.getArg("item_id"),
+                        providerFilter = request.getArgOrNull("provider_filter"),
+                    )
+
+                    else -> mediaItemStore.getTracksByArtist(findItem(request), topOnly = true)
+                }
 
                 Result.success(
                     answer(
@@ -537,23 +542,23 @@ class FakeServiceClient : ServiceClient {
     ) {
         val queueIndex = queues.indexOfFirst { it.queueId == queueId }
         val player = findPlayer { it.activeSource == queueId }.second
-
-        val dsp = legacyVersion.let {
-            if (it != null && it <= LegacyVersion.V2_9) {
-                mapOf(player.playerId to DSPSettings(outputFormat = playerAudioFormats[player.playerId]))
-            } else {
-                null
-            }
-        }
+        val audioProcessingChain = AudioProcessingChain(
+            inputFidelity = AudioFidelity(quality = AudioFidelity.QUALITY_HI_RES),
+            outputs = listOf(
+                AudioOutputDetails(
+                    fidelity = playerAudioFidelities[player.playerId],
+                    format = playerAudioFormats[player.playerId],
+                ),
+            ),
+        )
 
         val firstItem = items.firstOrNull()
         val currentItem = firstItem?.copy(
-            streamDetails = firstItem.streamDetails.let { streamDetails ->
-                streamDetails?.copy(dsp = dsp) ?: StreamDetails(
-                    audioFormat = AudioFormat(),
-                    dsp = dsp,
-                )
-            },
+            streamDetails = (firstItem.streamDetails ?: StreamDetails(audioFormat = AudioFormat()))
+                .copy(
+                    audioProcessingChain = audioProcessingChain,
+                    provider = firstItem.mediaItem?.providerMappings?.firstOrNull()?.providerInstance,
+                ),
         ) ?: firstItem
 
         queues[queueIndex] =
@@ -705,6 +710,9 @@ class FakeServiceClient : ServiceClient {
         TODO("Not yet implemented")
     }
 
+    override fun requestCommandRecovery() {
+    }
+
     override fun onPlaybackActive() {
     }
 
@@ -753,6 +761,10 @@ class FakeServiceClient : ServiceClient {
 
     fun addShortcut(item: ServerMediaItem) {
         shortcuts.add(item.uri!!)
+    }
+
+    fun addProvider(provider: ServerProviderInstance) {
+        providers.add(provider)
     }
 
     fun getState(playerId: String): PlayerState? {
@@ -898,6 +910,10 @@ class FakeServiceClient : ServiceClient {
         playerAudioFormats[player.playerId] = audioFormat
     }
 
+    fun setPlayerQuality(player: ServerPlayer, quality: String) {
+        playerAudioFidelities[player.playerId] = AudioFidelity(quality = quality)
+    }
+
     private fun ServerMediaItem.enrichLibraryItem(): ServerMediaItem {
         return mediaItemStore.enrichLibraryItem(this)
     }
@@ -906,10 +922,7 @@ class FakeServiceClient : ServiceClient {
         return this.map { mediaItemStore.enrichLibraryItem(it) }
     }
 
-    enum class LegacyVersion {
-        V2_8,
-        V2_9,
-    }
+    enum class LegacyVersion
 }
 
 private fun answer(request: Request, result: JsonElement): Answer {

@@ -10,8 +10,10 @@ import io.music_assistant.client.data.model.client.Metadata
 import io.music_assistant.client.data.model.client.items.Album
 import io.music_assistant.client.data.model.client.items.AppMediaItem
 import io.music_assistant.client.data.model.client.items.Artist
+import io.music_assistant.client.data.model.client.items.AudioSource
 import io.music_assistant.client.data.model.client.items.Audiobook
 import io.music_assistant.client.data.model.client.items.Genre
+import io.music_assistant.client.data.model.client.items.MediaCollection
 import io.music_assistant.client.data.model.client.items.Playlist
 import io.music_assistant.client.data.model.client.items.Podcast
 import io.music_assistant.client.data.model.client.items.PodcastEpisode
@@ -85,7 +87,7 @@ class MediaItemFactory(
                 album = album?.let { create(it) as? Album },
                 discNumber = discNumber,
                 trackNumber = trackNumber,
-                position = position?.takeIf { it in 0L..Int.MAX_VALUE.toLong() }?.toInt(),
+                position = intPosition,
                 version = version,
                 source = server,
             )
@@ -102,6 +104,7 @@ class MediaItemFactory(
                 images = resolveImageInfo(image, metadata),
                 isEditable = isEditable == true,
                 isDynamic = isDynamic == true,
+                supportedMediaTypes = supportedMediatypes?.mapNotNull(MediaType::fromServer)?.toSet(),
             )
 
             MediaType.FOLDER -> RecommendationFolder(
@@ -112,7 +115,22 @@ class MediaItemFactory(
                 images = resolveImageInfo(image, metadata),
                 items = items?.let { createList(it) },
                 path = path,
+                isPlayable = isPlayable == true,
             )
+
+            MediaType.COLLECTION -> {
+                val children = items?.let { createList(it) }.orEmpty()
+                MediaCollection(
+                    itemId = itemId,
+                    provider = provider,
+                    name = name,
+                    uri = uri,
+                    // The server gives a collection no artwork; borrow the first child's.
+                    images = resolveImageInfo(image, metadata)
+                        .ifEmpty { children.firstOrNull { it.images.isNotEmpty() }?.images.orEmpty() },
+                    items = children,
+                )
+            }
 
             MediaType.PODCAST -> Podcast(
                 itemId = itemId,
@@ -122,7 +140,8 @@ class MediaItemFactory(
                 metadata = createMetadata(metadata),
                 favorite = personalMusic?.isSaved(server) ?: favorite,
                 sortName = sortName,
-                uri = uri,
+                // The server's feed parser puts the feed's website link in `uri`; build the MA uri instead.
+                uri = "$provider://${MediaType.PODCAST.serverValue}/$itemId",
                 images = resolveImageInfo(image, metadata),
             )
 
@@ -143,6 +162,7 @@ class MediaItemFactory(
                 resumePositionMs = resumePositionMs,
                 releaseDate = metadata?.releaseDate,
                 version = version,
+                position = intPosition,
                 source = server,
             )
 
@@ -159,6 +179,7 @@ class MediaItemFactory(
                 version = version,
                 isPlayable = isPlayable == true,
                 isDynamic = isDynamic == true,
+                position = intPosition,
             )
 
             MediaType.SOUND_EFFECT -> SoundEffect(
@@ -170,6 +191,19 @@ class MediaItemFactory(
                 sortName = sortName,
                 images = resolveImageInfo(image, metadata),
                 duration = duration,
+                uri = uri,
+            )
+
+            MediaType.AUDIO_SOURCE -> AudioSource(
+                itemId = itemId,
+                provider = provider,
+                name = name,
+                providerMappings = providerMappings,
+                metadata = createMetadata(metadata),
+                sortName = sortName,
+                uri = uri,
+                images = resolveImageInfo(image, metadata),
+                isPlayable = isPlayable == true,
             )
 
             MediaType.AUDIOBOOK -> Audiobook(
@@ -190,6 +224,7 @@ class MediaItemFactory(
                 fullyPlayed = fullyPlayed,
                 resumePositionMs = resumePositionMs,
                 version = version,
+                position = intPosition,
                 source = server,
             )
 
@@ -228,6 +263,9 @@ class MediaItemFactory(
         radios = search.radio.mapNotNull { create(it) as? RadioStation },
         genres = search.genres.mapNotNull { create(it) as? Genre },
     )
+
+    private val ServerMediaItem.intPosition: Int?
+        get() = position?.takeIf { it in 0L..Int.MAX_VALUE.toLong() }?.toInt()
 
     private fun createMetadata(server: ServerMetadata?): Metadata? = server?.let {
         Metadata(

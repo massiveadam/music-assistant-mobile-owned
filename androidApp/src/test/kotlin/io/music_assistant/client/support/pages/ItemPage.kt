@@ -11,6 +11,7 @@ import androidx.compose.ui.test.junit4.ComposeTestRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import io.music_assistant.client.data.model.client.MediaType
 import io.music_assistant.client.data.model.server.ServerMediaItem
 import io.music_assistant.client.support.get
@@ -19,9 +20,11 @@ import io.music_assistant.client.ui.compose.item.ItemDetailsScreenSemantics
 import musicassistantclient.composeapp.generated.resources.Res
 import musicassistantclient.composeapp.generated.resources.action_go_to_artist
 import musicassistantclient.composeapp.generated.resources.action_play_now
+import musicassistantclient.composeapp.generated.resources.cd_find_in_list
 import musicassistantclient.composeapp.generated.resources.cd_more
 import musicassistantclient.composeapp.generated.resources.cd_provider_filter
 import musicassistantclient.composeapp.generated.resources.cd_view_all
+import musicassistantclient.composeapp.generated.resources.find_in_list_label
 import musicassistantclient.composeapp.generated.resources.media_type_albums
 import musicassistantclient.composeapp.generated.resources.media_type_tracks
 import musicassistantclient.composeapp.generated.resources.nav_home
@@ -81,9 +84,11 @@ class ItemPage(
             MediaType.PODCAST_EPISODE -> TODO()
             MediaType.GENRE -> TODO()
             MediaType.FOLDER -> TODO()
+            MediaType.COLLECTION -> TODO()
             MediaType.FLOW_STREAM -> TODO()
             MediaType.ANNOUNCEMENT -> TODO()
             MediaType.SOUND_EFFECT -> TODO()
+            MediaType.AUDIO_SOURCE -> TODO()
             MediaType.UNKNOWN -> TODO()
         }
     }
@@ -112,6 +117,15 @@ class ItemPage(
         return this
     }
 
+    fun assertProviderNotOffered(row: String, current: String, provider: String): ItemPage {
+        composeTestRule
+            .onNodeWithContentDescription(Res.string.cd_provider_filter.get(row, current))
+            .performClick()
+        composeTestRule.onNode(hasAnyAncestor(isPopup()).and(hasText(current))).assertExists()
+        composeTestRule.onNode(hasAnyAncestor(isPopup()).and(hasText(provider))).assertDoesNotExist()
+        return this
+    }
+
     fun assertMediaDisplayed(item: ServerMediaItem, provider: String? = null): ItemPage {
         return assertMediaDisplayed(
             item,
@@ -125,5 +139,32 @@ class ItemPage(
             .onNodeWithContentDescription(Res.string.cd_view_all.get(row))
             .performClick()
         return ItemListPage(row, navigationItem, composeTestRule).assertOnPage()
+    }
+
+    fun assertRowShown(row: String, shown: Boolean): ItemPage {
+        val title = composeTestRule.onNodeWithText(row)
+        if (shown) {
+            title.assertIsDisplayed()
+        } else {
+            title.assertIsNotDisplayed()
+        }
+
+        return this
+    }
+
+    fun openSearchInList(): ItemPage {
+        composeTestRule
+            .onNodeWithContentDescription(Res.string.cd_find_in_list.get())
+            .performClick()
+
+        return this
+    }
+
+    fun searchInList(query: String): ItemPage {
+        composeTestRule
+            .onNodeWithText(Res.string.find_in_list_label.get())
+            .performTextInput(query)
+
+        return this
     }
 }

@@ -16,6 +16,8 @@ class NativeAudioController: NSObject, PlatformAudioPlayer {
     private let bufferLock = NSLock()
     private let kNumberOfBuffers = 5 // More buffers for smoother playback
     private let kBufferSize: UInt32 = 65536 // 64KB per buffer for less stuttering
+    /// True while the queue is fed silence; logs once per run instead of once per buffer.
+    private var starved = true
 
 
     // MARK: - Decoder
@@ -91,7 +93,7 @@ class NativeAudioController: NSObject, PlatformAudioPlayer {
             if isPlaying {
                 pausedByInterruption = true
                 logInfo("Pausing server playback due to interruption")
-                remoteCommandHandler?.onCommand(command: "pause", source: "interruption")
+                remoteCommandHandler.withSnapshot { $0?.onCommand(command: "pause", source: "interruption") }
             }
         case .ended:
             guard pausedByInterruption else { break }
@@ -103,7 +105,7 @@ class NativeAudioController: NSObject, PlatformAudioPlayer {
             // audio device exclusively.
             if !AVAudioSession.sharedInstance().secondaryAudioShouldBeSilencedHint {
                 logInfo("Resuming server playback after interruption")
-                remoteCommandHandler?.onCommand(command: "play", source: "interruption")
+                remoteCommandHandler.withSnapshot { $0?.onCommand(command: "play", source: "interruption") }
             } else {
                 logInfo("Another app holds audio — staying paused")
             }
@@ -144,7 +146,7 @@ class NativeAudioController: NSObject, PlatformAudioPlayer {
         bufferLock.lock()
         pcmBuffer.removeAll()
         bufferLock.unlock()
-        remoteCommandHandler?.onCommand(command: "pause", source: "route_loss")
+        remoteCommandHandler.withSnapshot { $0?.onCommand(command: "pause", source: "route_loss") }
     }
 
     // MARK: - PlatformAudioPlayer Protocol
@@ -238,8 +240,18 @@ class NativeAudioController: NSObject, PlatformAudioPlayer {
 
         do {
             let pcmData = try decoder.decode(swiftData)
+            let bytesPerSample = currentCodec == "flac" || currentBitDepth == 24
+                ? 4
+                : Int(currentBitDepth / 8)
+            let bytesPerFrame = max(1, Int(currentChannels) * bytesPerSample)
+
+            let pcmChunks = PCMChunker.split(
+                pcmData,
+                frameSize: bytesPerFrame,
+                capacity: Int(kBufferSize)
+            )
             bufferLock.lock()
-            pcmBuffer.append(pcmData)
+            pcmBuffer.append(contentsOf: pcmChunks)
             bufferLock.unlock()
         } catch {
             logDebug("Decode error: \(error)")
@@ -356,7 +368,8 @@ class NativeAudioController: NSObject, PlatformAudioPlayer {
 
         audioQueue = queue
 
-        // Allocate and prime buffers
+        // Allocate and prime buffers; silent priming is not a starvation.
+        starved = true
         for _ in 0..<kNumberOfBuffers {
             var buffer: AudioQueueBufferRef?
             let allocStatus = AudioQueueAllocateBuffer(queue, kBufferSize, &buffer)
@@ -402,6 +415,7 @@ class NativeAudioController: NSObject, PlatformAudioPlayer {
         bufferLock.unlock()
 
         if let data = pcmData {
+            starved = false
             // Copy PCM data to buffer
             let copySize = min(data.count, Int(buffer.pointee.mAudioDataBytesCapacity))
             _ = data.withUnsafeBytes { srcBytes in
@@ -410,6 +424,12 @@ class NativeAudioController: NSObject, PlatformAudioPlayer {
             buffer.pointee.mAudioDataByteSize = UInt32(copySize)
         } else {
             // No data - output silence
+            if !starved {
+                starved = true
+                let silenceMs = Double(buffer.pointee.mAudioDataBytesCapacity)
+                    / Double(max(1, audioFormat.mBytesPerFrame)) / audioFormat.mSampleRate * 1000
+                logInfo("Starved: enqueued \(Int(silenceMs)) ms of silence")
+            }
             memset(buffer.pointee.mAudioData, 0, Int(buffer.pointee.mAudioDataBytesCapacity))
             buffer.pointee.mAudioDataByteSize = buffer.pointee.mAudioDataBytesCapacity
         }
@@ -420,7 +440,7 @@ class NativeAudioController: NSObject, PlatformAudioPlayer {
 
     // MARK: - Now Playing (Control Center / Lock Screen)
 
-    private var remoteCommandHandler: RemoteCommandHandler?
+    private let remoteCommandHandler = RemoteCommandHandlerStore<RemoteCommandHandler?>(nil)
 
     func setLongFormSeekIntervals(backSeconds: Int64, forwardSeconds: Int64) {
         NowPlayingCoordinator.shared.setLongFormSeekIntervals(
@@ -430,11 +450,11 @@ class NativeAudioController: NSObject, PlatformAudioPlayer {
     }
 
     func setRemoteCommandHandler(handler: RemoteCommandHandler?) {
-        self.remoteCommandHandler = handler
+        remoteCommandHandler.replace(handler)
 
         NowPlayingCoordinator.shared.setCommandHandler { [weak self] command in
             self?.logInfo("Remote command: \(command)")
-            self?.remoteCommandHandler?.onCommand(command: command, source: "remote")
+            self?.remoteCommandHandler.withSnapshot { $0?.onCommand(command: command, source: "remote") }
         }
     }
 }
