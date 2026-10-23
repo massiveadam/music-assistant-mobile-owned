@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
@@ -44,8 +43,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -59,11 +60,11 @@ import io.music_assistant.client.data.model.client.items.AppMediaItem
 import io.music_assistant.client.data.model.client.items.Artist
 import io.music_assistant.client.data.model.client.items.Audiobook
 import io.music_assistant.client.data.model.client.items.Genre
+import io.music_assistant.client.data.model.client.items.MediaCollection
 import io.music_assistant.client.data.model.client.items.PlayableItem
 import io.music_assistant.client.data.model.client.items.Playlist
 import io.music_assistant.client.data.model.client.items.Podcast
 import io.music_assistant.client.data.model.client.items.PodcastEpisode
-import io.music_assistant.client.data.model.client.items.RadioStation
 import io.music_assistant.client.data.model.client.items.RecommendationFolder
 import io.music_assistant.client.data.model.client.items.Track
 import io.music_assistant.client.data.model.client.items.image
@@ -74,11 +75,13 @@ import io.music_assistant.client.ui.compose.common.icons.ArtistIcon
 import io.music_assistant.client.ui.compose.common.icons.BookAudioIcon
 import io.music_assistant.client.ui.compose.common.icons.GenreIcon
 import io.music_assistant.client.ui.compose.common.icons.PlaylistIcon
-import io.music_assistant.client.ui.compose.common.icons.RadioIcon
 import io.music_assistant.client.ui.compose.common.icons.TrackIcon
 import io.music_assistant.client.ui.compose.common.painters.rememberPlaceholderPainter
+import io.music_assistant.client.ui.compose.common.painters.rememberVinylRecordPainter
+import io.music_assistant.client.ui.compose.common.painters.rememberWaveformPainter
+import io.music_assistant.client.ui.compose.common.providers.ProviderIconFetcher
+import io.music_assistant.client.ui.compose.grid.GridItem
 import io.music_assistant.client.ui.theme.favoriteTint
-import io.music_assistant.client.utils.gridItemMinSize
 import io.music_assistant.client.utils.rowImageSize
 import musicassistantclient.composeapp.generated.resources.Res
 import musicassistantclient.composeapp.generated.resources.cd_album_item
@@ -102,7 +105,7 @@ fun ArtistGridItem(
     item: Artist,
     onClick: (Artist) -> Unit,
     onLongClick: (Artist) -> Unit,
-    providerIconFetcher: (@Composable (Modifier, String) -> Unit)?,
+    providerIconFetcher: ProviderIconFetcher?,
 ) {
     GridItem(
         modifier = modifier,
@@ -167,7 +170,7 @@ fun AlbumGridItem(
     item: Album,
     onClick: (Album) -> Unit,
     onLongClick: (Album) -> Unit,
-    providerIconFetcher: (@Composable (Modifier, String) -> Unit)?,
+    providerIconFetcher: ProviderIconFetcher?,
 ) {
     GridItem(
         modifier = modifier,
@@ -236,7 +239,7 @@ fun PlaylistGridItem(
     item: Playlist,
     onClick: (Playlist) -> Unit,
     onLongClick: (Playlist) -> Unit,
-    providerIconFetcher: (@Composable (Modifier, String) -> Unit)? = null,
+    providerIconFetcher: ProviderIconFetcher? = null,
 ) {
     GridItem(
         modifier = modifier,
@@ -295,7 +298,7 @@ fun PodcastGridItem(
     item: Podcast,
     onClick: (Podcast) -> Unit,
     onLongClick: (Podcast) -> Unit,
-    providerIconFetcher: (@Composable (Modifier, String) -> Unit)? = null,
+    providerIconFetcher: ProviderIconFetcher? = null,
 ) {
     GridItem(
         modifier = modifier,
@@ -361,7 +364,7 @@ internal fun TrackGridItem(
     item: Track,
     onClick: (Track) -> Unit,
     onLongClick: (Track) -> Unit,
-    providerIconFetcher: (@Composable (Modifier, String) -> Unit)?,
+    providerIconFetcher: ProviderIconFetcher?,
 ) {
     GridItem(
         modifier = modifier,
@@ -416,7 +419,7 @@ internal fun PodcastEpisodeGridItem(
     item: PodcastEpisode,
     onClick: (PodcastEpisode) -> Unit,
     onLongClick: (PodcastEpisode) -> Unit,
-    providerIconFetcher: (@Composable (Modifier, String) -> Unit)?,
+    providerIconFetcher: ProviderIconFetcher?,
 ) {
     GridItem(
         modifier = modifier,
@@ -492,20 +495,20 @@ private fun PodcastEpisodeImage(
 }
 
 /**
- * Radio station media item with wavy octagon shape.
+ * Live stream media item (radio station or input source) with wavy octagon shape.
  *
- * @param item The radio station item to display
+ * @param item The live item to display
  * @param onClick Click handler
 
  */
 @Composable
-internal fun RadioGridItem(
+internal fun <T> LiveStreamGridItem(
     modifier: Modifier = Modifier,
-    item: RadioStation,
-    onClick: (RadioStation) -> Unit,
-    onLongClick: (RadioStation) -> Unit,
-    providerIconFetcher: (@Composable (Modifier, String) -> Unit)?,
-) {
+    item: T,
+    onClick: (T) -> Unit,
+    onLongClick: (T) -> Unit,
+    providerIconFetcher: ProviderIconFetcher?,
+) where T : AppMediaItem, T : PlayableItem {
     GridItem(
         modifier = modifier,
         description = contentDescription(item),
@@ -513,7 +516,7 @@ internal fun RadioGridItem(
         onLongClick = { onLongClick(item) },
     ) {
         Box {
-            RadioImage(item)
+            LiveStreamImage(item)
             Badges(
                 item = item,
                 providerIconFetcher = providerIconFetcher,
@@ -524,7 +527,7 @@ internal fun RadioGridItem(
 }
 
 @Composable
-private fun RadioImage(
+private fun LiveStreamImage(
     item: PlayableItem,
 ) {
     val primaryContainer = MaterialTheme.colorScheme.primaryContainer
@@ -539,7 +542,7 @@ private fun RadioImage(
         val placeholder = rememberPlaceholderPainter(
             backgroundColor = primaryContainer,
             iconColor = onPrimaryContainer,
-            icon = RadioIcon,
+            icon = item.defaultIcon,
         )
         AsyncImage(
             placeholder = placeholder,
@@ -565,7 +568,7 @@ internal fun AudiobookGridItem(
     item: Audiobook,
     onClick: (Audiobook) -> Unit,
     onLongClick: (Audiobook) -> Unit,
-    providerIconFetcher: (@Composable (Modifier, String) -> Unit)?,
+    providerIconFetcher: ProviderIconFetcher?,
 ) {
     GridItem(
         modifier = modifier,
@@ -595,7 +598,7 @@ internal fun AudiobookGridItem(
 
 @Composable
 private fun AudiobookImage(
-    item: Audiobook,
+    item: AppMediaItem,
 ) {
     val primaryContainer = MaterialTheme.colorScheme.primaryContainer
     val onPrimaryContainer = MaterialTheme.colorScheme.onPrimaryContainer
@@ -637,52 +640,9 @@ private fun GridPlayableItemLabels(item: PlayableItem) {
 }
 
 @Composable
-private fun Modifier.gridCellWidth(): Modifier {
-    val minSize = gridItemMinSize()
-    return this.layout { measurable, constraints ->
-        val targetConstraints = if (constraints.hasBoundedWidth) {
-            constraints
-        } else {
-            val width = minSize.roundToPx()
-            constraints.copy(minWidth = width, maxWidth = width)
-        }
-        val placeable = measurable.measure(targetConstraints)
-        layout(placeable.width, placeable.height) {
-            placeable.place(0, 0)
-        }
-    }
-}
-
-/**
- * Common wrapper for media items with click handling.
- */
-@Composable
-private fun GridItem(
-    modifier: Modifier = Modifier,
-    description: String,
-    onClick: () -> Unit,
-    onLongClick: () -> Unit,
-    content: @Composable ColumnScope.() -> Unit,
-) {
-    Column(
-        modifier = modifier
-            .gridCellWidth()
-            .clearAndSetSemantics {
-                contentDescription = description
-            }
-            .clip(RoundedCornerShape(6.dp))
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(4.dp),
-        horizontalAlignment = Alignment.Start,
-    ) {
-        content()
-    }
-}
-
-@Composable
 fun BoxScope.Badges(
     item: AppMediaItem,
-    providerIconFetcher: (@Composable (Modifier, String) -> Unit)?,
+    providerIconFetcher: ProviderIconFetcher?,
     badgeSize: Dp = 16.dp,
     badgePadding: Dp = 0.dp,
     showOwned: Boolean = true,
@@ -700,6 +660,7 @@ fun BoxScope.Badges(
         providerIconFetcher?.invoke(
             bottomEnd.background(Color.Gray, CircleShape),
             item.provider,
+            "dark",
         )
     }
     if (item.isExplicit) {
@@ -770,7 +731,7 @@ internal fun TrackRowItem(
     showTrackNumber: Boolean,
     onClick: (Track) -> Unit,
     onLongClick: (Track) -> Unit,
-    providerIconFetcher: (@Composable (Modifier, String) -> Unit)?,
+    providerIconFetcher: ProviderIconFetcher?,
 ) {
     RowItem(
         modifier = modifier,
@@ -810,7 +771,7 @@ internal fun AlbumRowItem(
     item: Album,
     onClick: (Album) -> Unit,
     onLongClick: (Album) -> Unit,
-    providerIconFetcher: (@Composable (Modifier, String) -> Unit)?,
+    providerIconFetcher: ProviderIconFetcher?,
 ) {
     RowItem(
         modifier = modifier,
@@ -837,7 +798,7 @@ internal fun ArtistRowItem(
     item: Artist,
     onClick: (Artist) -> Unit,
     onLongClick: (Artist) -> Unit,
-    providerIconFetcher: (@Composable (Modifier, String) -> Unit)?,
+    providerIconFetcher: ProviderIconFetcher?,
 ) {
     RowItem(
         modifier = modifier,
@@ -864,7 +825,7 @@ internal fun PlaylistRowItem(
     item: Playlist,
     onClick: (Playlist) -> Unit,
     onLongClick: (Playlist) -> Unit,
-    providerIconFetcher: (@Composable (Modifier, String) -> Unit)?,
+    providerIconFetcher: ProviderIconFetcher?,
 ) {
     RowItem(
         modifier = modifier,
@@ -891,7 +852,7 @@ internal fun PodcastRowItem(
     item: Podcast,
     onClick: (Podcast) -> Unit,
     onLongClick: (Podcast) -> Unit,
-    providerIconFetcher: (@Composable (Modifier, String) -> Unit)?,
+    providerIconFetcher: ProviderIconFetcher?,
 ) {
     RowItem(
         modifier = modifier,
@@ -916,7 +877,7 @@ internal fun PodcastEpisodeRowItem(
     item: PodcastEpisode,
     onClick: (PodcastEpisode) -> Unit,
     onLongClick: (PodcastEpisode) -> Unit,
-    providerIconFetcher: (@Composable (Modifier, String) -> Unit)?,
+    providerIconFetcher: ProviderIconFetcher?,
 ) {
     RowItem(
         modifier = modifier,
@@ -940,20 +901,20 @@ internal fun PodcastEpisodeRowItem(
 }
 
 @Composable
-internal fun RadioRowItem(
+internal fun <T> LiveStreamRowItem(
     modifier: Modifier = Modifier,
-    item: RadioStation,
-    onClick: (RadioStation) -> Unit,
-    onLongClick: (RadioStation) -> Unit,
-    providerIconFetcher: (@Composable (Modifier, String) -> Unit)?,
-) {
+    item: T,
+    onClick: (T) -> Unit,
+    onLongClick: (T) -> Unit,
+    providerIconFetcher: ProviderIconFetcher?,
+) where T : AppMediaItem, T : PlayableItem {
     RowItem(
         modifier = modifier,
         name = item.displayName,
         subtitle = item.localizedSubtitle(),
         description = contentDescription(item),
         prefixContent = {
-            RadioImage(item)
+            LiveStreamImage(item)
             Badges(
                 item = item,
                 providerIconFetcher = providerIconFetcher,
@@ -970,7 +931,7 @@ fun GenreGridItem(
     item: Genre,
     onClick: (Genre) -> Unit,
     onLongClick: (Genre) -> Unit,
-    providerIconFetcher: (@Composable (Modifier, String) -> Unit)? = null,
+    providerIconFetcher: ProviderIconFetcher? = null,
 ) {
     GridItem(
         modifier = modifier,
@@ -1029,7 +990,7 @@ internal fun GenreRowItem(
     item: Genre,
     onClick: (Genre) -> Unit,
     onLongClick: (Genre) -> Unit,
-    providerIconFetcher: (@Composable (Modifier, String) -> Unit)?,
+    providerIconFetcher: ProviderIconFetcher?,
 ) {
     RowItem(
         modifier = modifier,
@@ -1049,31 +1010,33 @@ internal fun GenreRowItem(
 }
 
 /**
- * Browse-only cell for a [RecommendationFolder]: icon + name, no long-press menu — tapping it
- * navigates one level deeper. Folders never appear in library lists, so this is exercised only
- * by the Browse screen.
+ * Browse-only cell for a [RecommendationFolder]: icon + name. Tapping it navigates one level
+ * deeper. Folders never appear in library lists, so this is exercised only by the Browse screen.
  */
 @Composable
-fun FolderCell(
+internal fun FolderCell(
+    modifier: Modifier = Modifier,
     item: RecommendationFolder,
     viewMode: ViewMode = ViewMode.GRID,
-    onNavigateClick: (RecommendationFolder) -> Unit,
+    onClick: (RecommendationFolder) -> Unit,
+    onLongClick: (RecommendationFolder) -> Unit,
 ) {
     when (viewMode) {
         ViewMode.LIST -> RowItem(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = modifier.fillMaxWidth(),
             name = item.displayName,
             subtitle = null,
             description = contentDescription(item),
             prefixContent = { FolderImage(item) },
-            onClick = { onNavigateClick(item) },
-            onLongClick = {},
+            onClick = { onClick(item) },
+            onLongClick = { onLongClick(item) },
         )
 
         ViewMode.GRID -> GridItem(
+            modifier = modifier,
             description = contentDescription(item),
-            onClick = { onNavigateClick(item) },
-            onLongClick = {},
+            onClick = { onClick(item) },
+            onLongClick = { onLongClick(item) },
         ) {
             FolderImage(item)
             Spacer(Modifier.height(4.dp))
@@ -1119,7 +1082,7 @@ internal fun AudiobookRowItem(
     item: Audiobook,
     onClick: (Audiobook) -> Unit,
     onLongClick: (Audiobook) -> Unit,
-    providerIconFetcher: (@Composable (Modifier, String) -> Unit)?,
+    providerIconFetcher: ProviderIconFetcher?,
 ) {
     RowItem(
         modifier = modifier,
@@ -1137,6 +1100,48 @@ internal fun AudiobookRowItem(
                 resumePositionMs = item.resumePositionMs,
             )
         },
+        onClick = { onClick(item) },
+        onLongClick = { onLongClick(item) },
+    )
+}
+
+/** A series: the audiobook cover of its first book, no badges (it has no provider or progress). */
+@Composable
+internal fun MediaCollectionGridItem(
+    modifier: Modifier = Modifier,
+    item: MediaCollection,
+    onClick: (MediaCollection) -> Unit,
+    onLongClick: (MediaCollection) -> Unit,
+) {
+    GridItem(
+        modifier = modifier,
+        description = contentDescription(item),
+        onClick = { onClick(item) },
+        onLongClick = { onLongClick(item) },
+    ) {
+        AudiobookImage(item)
+        Spacer(Modifier.height(4.dp))
+        MediaItemLabels(
+            title = item.displayName,
+            subtitle = item.localizedSubtitle().orEmpty(),
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+@Composable
+internal fun MediaCollectionRowItem(
+    modifier: Modifier = Modifier,
+    item: MediaCollection,
+    onClick: (MediaCollection) -> Unit,
+    onLongClick: (MediaCollection) -> Unit,
+) {
+    RowItem(
+        modifier = modifier,
+        name = item.displayName,
+        subtitle = item.localizedSubtitle(),
+        description = contentDescription(item),
+        prefixContent = { AudiobookImage(item) },
         onClick = { onClick(item) },
         onLongClick = { onLongClick(item) },
     )
@@ -1174,8 +1179,7 @@ internal fun MediaItemLabels(
     Text(
         modifier = Modifier.fillMaxWidth(),
         text = title,
-        color = MaterialTheme.colorScheme.onSurface,
-        style = MaterialTheme.typography.bodyMedium,
+        style = mediaItemTitleStyle(),
         fontWeight = MEDIA_TITLE_WEIGHT,
         textAlign = textAlign,
         maxLines = titleMaxLines,
@@ -1263,6 +1267,16 @@ internal fun RowItem(
         }
         suffixContent?.invoke(this)
     }
+}
+
+@Composable
+internal fun mediaItemTitleStyle(): TextStyle {
+    return MaterialTheme.typography.bodyMedium
+}
+
+@Composable
+internal fun mediaItemSubtitleStyle(): TextStyle {
+    return MaterialTheme.typography.bodySmall
 }
 
 @Composable

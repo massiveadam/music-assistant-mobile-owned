@@ -1,5 +1,18 @@
 # Mobile coverage
 
+## October23 stable client refresh
+
+Android source includes official android-v0.15.0 and the standalone Sendspin module.
+Owned version0.15.0-owned/code36 retains private saves, inbox/unread, collections,
+editorial/NTS, owned-first discography, source recovery, credits and local-only offline downloads.
+The new artist view model now loads the owned discography before the combined catalog;
+provider-specific top-track requests honor the signed-in account's provider filter.
+Selected native data/home/detail/category suite:111 passed. Web:166 passed and production
+build passed on the compatible frontend2.17.334 line. Frontend347 requires API96,
+whereas stable server2.10.7 uses65. Monitoring reports this compatibility hold.
+Physical phone audio and Android Auto remain hardware checks.
+
+
 ## October 16 offline downloads — 0.14.21-owned / 35 (Android only)
 
 Local-library albums can be downloaded and played with no connection. Server: sidecar `credits/offline_api.py` (`/credits/v1/offline/album|track|artwork`), with MA-authorized URIs; only `filesystem_local` mappings are offered. Files are mapped server-side with traversal guards and converted to Opus 160k (cached, 4 GB LRU). Streaming-only (Apple) tracks are refused. Android: `OfflineLibrary` (commonMain; transport/storage/player interfaces), `AndroidOfflineStorage` (app-private files), Media3 `OfflinePlaybackService` + MediaController player (notification, lock screen, audio focus). UI: album "Download for offline", a Downloads screen from Home/Library/connection screen, and the offline route exempt from the disconnect redirect. Web: not applicable (a home browser is online; no offline player); recorded as desktop gap. Tests: 7 server, 6 OfflineLibrary, 668 composeApp; 130 selected androidApp, of which two fail: "can filter to only favorites" (also fails on unchanged source) and "library has its own backstack" (fails only in the large batch; the LibraryTest class passes alone). Waydroid 34→35 upgrade kept sign-in. Manning Fireworks downloaded (9 tracks + cover, 46 MB). With the device network down, the Downloads screen played it (media session PLAYING, AudioTrack started, USAGE_MEDIA). Physical phone unverified. Evidence: `../../evidence/20261016-offline-downloads/`.

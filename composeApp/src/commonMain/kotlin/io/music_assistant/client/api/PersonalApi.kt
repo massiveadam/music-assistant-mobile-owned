@@ -12,7 +12,6 @@ import io.ktor.http.HttpMethod
 import io.ktor.utils.io.ByteReadChannel
 import io.music_assistant.client.utils.SessionState
 import io.music_assistant.client.utils.authenticatedToken
-import io.music_assistant.client.utils.createPlatformHttpClient
 import io.music_assistant.client.utils.myJson
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.JsonObject
@@ -22,10 +21,7 @@ import kotlinx.serialization.json.contentOrNull
 /** Same authenticated connection as playback. Never uses a saved token from another server. */
 class PersonalApi(
     val serviceClient: ServiceClient,
-    private val http: HttpClient = createPlatformHttpClient {
-        install(io.ktor.client.plugins.HttpTimeout) { requestTimeoutMillis = 60000; connectTimeoutMillis = 10000 }
-        followRedirects = false // never forward a user token to a redirect origin
-    },
+    private val http: HttpClient,
 ) {
     class Session internal constructor(
         val serverId: String,

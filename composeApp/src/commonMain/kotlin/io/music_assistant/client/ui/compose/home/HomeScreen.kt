@@ -94,7 +94,7 @@ fun HomeScreen(
     homeScreenViewModel: HomeScreenViewModel,
     contentPadding: PaddingValues,
     onNavigateClick: (AppMediaItem) -> Unit,
-    providerIconFetcher: (@Composable (Modifier, String) -> Unit),
+    providerIconFetcher: (@Composable (Modifier, String, String) -> Unit),
     actionsViewModel: ActionsViewModel,
     state: HomeScreenState,
     onMyMusic: () -> Unit = {},

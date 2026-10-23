@@ -29,6 +29,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -980,8 +981,8 @@ private fun ArtistContent(
     providerDetails: (String) -> ProviderDetails?,
 ) {
     val artistDetailsViewModel = koinViewModel<ArtistDetailsViewModel> { parametersOf(artist) }
-    val librarySection by artistDetailsViewModel.library.collectAsStateWithLifecycle()
-    val allSection by artistDetailsViewModel.all.collectAsStateWithLifecycle()
+    val discography by artistDetailsViewModel.discography.collectAsStateWithLifecycle()
+    val recovering by artistDetailsViewModel.recovering.collectAsStateWithLifecycle()
     val topTracksSection by artistDetailsViewModel.topTracks.collectAsStateWithLifecycle()
 
     NoOverscroll {
@@ -991,36 +992,23 @@ private fun ArtistContent(
         ) {
             item { heroSlot() }
             item {
-                SectionRow(
-                    artist = artist,
-                    sectionData = librarySection,
-                    id = "library",
-                    title = Res.string.artist_section_in_library.toDisplayString(),
-                    onNavigateClick = onNavigateClick,
-                    onNavigateToList = onNavigateToList,
-                    onPlayChildClick = onPlayChildClick,
-                    playlistActions = playlistActions,
-                    libraryActions = libraryActions,
-                    providerIconFetcher = providerIconFetcher,
-                    providerDetails = providerDetails,
-                )
-            }
-
-            item {
-                SectionRow(
-                    artist = artist,
-                    sectionData = allSection,
-                    id = "all",
-                    title = Res.string.artist_section_all.toDisplayString(),
-                    onNavigateClick = onNavigateClick,
-                    onNavigateToList = onNavigateToList,
-                    onFilterSelected = artistDetailsViewModel::loadAll,
-                    onPlayChildClick = onPlayChildClick,
-                    playlistActions = playlistActions,
-                    libraryActions = libraryActions,
-                    providerIconFetcher = providerIconFetcher,
-                    providerDetails = providerDetails,
-                )
+                TextButton(onClick = { artistDetailsViewModel.loadDiscography(recover = true) }, enabled = !recovering) {
+                    Text(if (recovering) "Checking sources…" else "Refresh catalog / find other sources")
+                }
+                when (val groups = discography) {
+                    is DataState.Data -> {
+                        if (groups.data.unavailableSources.isNotEmpty() || groups.data.unlinkedSources.isNotEmpty()) {
+                            Text("Not all catalog sources were checked or linked. Showing available releases.", Modifier.padding(16.dp))
+                        }
+                        androidx.compose.runtime.key(artist.uri ?: artist.itemId) {
+                            ArtistDiscography(groups.data.owned, groups.data.all, onNavigateClick,
+                                onPlayChildClick, playlistActions, libraryActions, providerIconFetcher)
+                        }
+                    }
+                    is DataState.Loading -> CenteredProgress()
+                    is DataState.Error -> Text("Could not load discography. Use Refresh catalog to retry.", Modifier.padding(16.dp))
+                    else -> Unit
+                }
             }
 
             item {

@@ -79,7 +79,7 @@ fun <T, U> CategoryRow(
     playlistActions: PlaylistActions,
     libraryActions: LibraryActions,
     progressActions: ProgressActions? = null,
-    providerIconFetcher: (@Composable (Modifier, String) -> Unit),
+    providerIconFetcher: (@Composable (Modifier, String, String) -> Unit),
 ) {
     if (data is DataState.Data) {
         CategoryRow(
@@ -141,7 +141,7 @@ fun <T> CategoryRow(
     playlistActions: PlaylistActions,
     libraryActions: LibraryActions,
     progressActions: ProgressActions? = null,
-    providerIconFetcher: (@Composable (Modifier, String) -> Unit),
+    providerIconFetcher: (@Composable (Modifier, String, String) -> Unit),
 ) {
     if (itemCategory.items.isEmpty() && itemCategory.filter == null) {
         return
@@ -195,7 +195,7 @@ fun CategoryRow(
     playlistActions: PlaylistActions,
     libraryActions: LibraryActions,
     progressActions: ProgressActions? = null,
-    providerIconFetcher: (@Composable (Modifier, String) -> Unit),
+    providerIconFetcher: (@Composable (Modifier, String, String) -> Unit),
     rowTag: String? = null,
     itemLabels: Map<String, String> = emptyMap(),
 ) {
@@ -503,7 +503,7 @@ fun PreviewCategoryRowEmpty() {
                 TODO("Not yet implemented")
             }
         },
-        providerIconFetcher = { _, _ -> },
+        providerIconFetcher = { _, _, _ -> },
     )
 }
 
@@ -543,7 +543,7 @@ fun PreviewCategoryLoading() {
                 TODO("Not yet implemented")
             }
         },
-        providerIconFetcher = { _, _ -> },
+        providerIconFetcher = { _, _, _ -> },
     )
 }
 
@@ -583,6 +583,6 @@ fun PreviewCategoryNoData() {
                 TODO("Not yet implemented")
             }
         },
-        providerIconFetcher = { _, _ -> },
+        providerIconFetcher = { _, _, _ -> },
     )
 }

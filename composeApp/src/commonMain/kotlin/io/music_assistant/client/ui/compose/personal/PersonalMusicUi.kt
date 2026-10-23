@@ -128,7 +128,7 @@ fun AlbumCollectionChooser(album: Album, onDismiss: () -> Unit) {
 fun PersonalMusicScreen(contentPadding: PaddingValues, onBack: () -> Unit,
     onNavigateClick: (AppMediaItem) -> Unit, onPlayClick: PlayHandler<AppMediaItem>,
     actions: io.music_assistant.client.ui.compose.common.viewmodel.ActionsViewModel,
-    providerIconFetcher: @Composable (Modifier, String) -> Unit,
+    providerIconFetcher: @Composable (Modifier, String, String) -> Unit,
 ) {
     val repository = koinInject<PersonalMusicRepository>()
     val factory = koinInject<MediaItemFactory>()
@@ -169,7 +169,7 @@ fun PersonalMusicScreen(contentPadding: PaddingValues, onBack: () -> Unit,
 @Composable
 private fun PersonalItemRow(item: AppMediaItem, onNavigateClick: (AppMediaItem) -> Unit,
     onPlayClick: PlayHandler<AppMediaItem>, actions: io.music_assistant.client.ui.compose.common.viewmodel.ActionsViewModel,
-    providerIconFetcher: @Composable (Modifier, String) -> Unit,
+    providerIconFetcher: @Composable (Modifier, String, String) -> Unit,
 ) {
     when (item) {
         is Album -> AlbumWithMenu(item, ViewMode.LIST, onNavigateClick, onNavigateClick,
@@ -189,7 +189,7 @@ private fun PersonalItemRow(item: AppMediaItem, onNavigateClick: (AppMediaItem) 
 fun AlbumCollectionsScreen(contentPadding: PaddingValues, onBack: () -> Unit,
     onNavigateClick: (AppMediaItem) -> Unit, onPlayClick: PlayHandler<AppMediaItem>,
     actions: io.music_assistant.client.ui.compose.common.viewmodel.ActionsViewModel,
-    providerIconFetcher: @Composable (Modifier, String) -> Unit,
+    providerIconFetcher: @Composable (Modifier, String, String) -> Unit,
 ) {
     val repository = koinInject<PersonalMusicRepository>()
     val factory = koinInject<MediaItemFactory>()

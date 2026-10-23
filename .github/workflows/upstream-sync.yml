@@ -1,8 +1,8 @@
 name: Sync from upstream
 
 # Keeps this standalone repo from drifting away from the official client.
-# Never auto-merges: it merges upstream into the `upstream-sync` branch and opens
-# a PR into main. On a conflict it writes a run summary and fails so the merge can
+# Never auto-merges: it merges the latest stable Android tag into `upstream-sync`
+# and opens a PR into the maintained default branch. On a conflict it fails so the merge can
 # be resolved deliberately.
 
 on:
@@ -18,28 +18,33 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout main
+      - name: Checkout the maintained owned branch
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
 
       - name: Merge upstream into the sync branch
         id: merge
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git remote add upstream https://github.com/music-assistant/mobile-app.git || true
-          git fetch --quiet upstream main
-          behind=$(git rev-list --count HEAD..upstream/main)
+          tag=$(gh api 'repos/music-assistant/mobile-app/releases?per_page=100' --jq 'map(select(.draft == false and .prerelease == false and (.tag_name | test("^android-v[0-9]+\\.[0-9]+\\.[0-9]+$")))) | sort_by(.tag_name | sub("^android-v"; "") | split(".") | map(tonumber)) | last | .tag_name')
+          test -n "$tag" && test "$tag" != null
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          git fetch --quiet --no-tags upstream "refs/tags/$tag:refs/tags/$tag"
+          behind=$(git rev-list --count "HEAD..$tag^{commit}")
           echo "behind=$behind" >> "$GITHUB_OUTPUT"
           if [ "$behind" -eq 0 ]; then
             echo "result=current" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           git checkout -B upstream-sync
-          if git merge --no-edit upstream/main >/tmp/merge.log 2>&1; then
+          if git merge --no-edit "$tag^{commit}" >/tmp/merge.log 2>&1; then
             echo "result=merged" >> "$GITHUB_OUTPUT"
           else
             git diff --name-only --diff-filter=U >/tmp/conflicts.txt || true
@@ -49,38 +54,38 @@ jobs:
 
       - name: Push sync branch
         if: steps.merge.outputs.result == 'merged'
-        run: git push --force origin upstream-sync
+        run: git push --force-with-lease origin HEAD:upstream-sync
 
       - name: Open or update PR
         if: steps.merge.outputs.result == 'merged'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OWNED_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           repo="${{ github.repository }}"
-          if gh pr view upstream-sync >/dev/null 2>&1; then
-            gh pr comment upstream-sync --body "Updated with the latest upstream commits." \
-              || echo "::warning::Could not update the PR."
-          else
-            gh pr create --base main --head upstream-sync \
-              --title "chore: sync with upstream music-assistant/mobile-app" \
-              --body "Automated weekly merge of upstream into this branch. Review the diff before merging; this PR is never auto-merged." \
+          if ! gh pr view upstream-sync >/dev/null 2>&1; then
+            gh pr create --base "$OWNED_BRANCH" --head upstream-sync \
+              --title "chore: sync stable Android ${{ steps.merge.outputs.tag }}" \
+              --body "Automated merge of the latest stable Android release into the maintained owned branch. Preserve custom features and review tests before merging; this PR is never auto-merged." \
               || echo "::warning::Could not open the PR automatically (enable 'Allow GitHub Actions to create and approve pull requests' in repo settings, or open it from the upstream-sync branch)."
           fi
           {
             echo "### Upstream sync"
             echo
-            echo "Merged upstream \`music-assistant/mobile-app\` into the \`upstream-sync\` branch (was ${{ steps.merge.outputs.behind }} commits behind)."
+            echo "Merged stable \`${{ steps.merge.outputs.tag }}\` into \`upstream-sync\` (was ${{ steps.merge.outputs.behind }} commits behind)."
             echo
-            echo "Compare / open PR: https://github.com/$repo/compare/main...upstream-sync?expand=1"
+            echo "Compare / open PR: https://github.com/$repo/compare/$OWNED_BRANCH...upstream-sync?expand=1"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Report conflict
         if: steps.merge.outputs.result == 'conflict'
+        env:
+          OWNED_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           {
             echo "### Upstream sync conflict"
             echo
-            echo "Merging \`music-assistant/mobile-app\` into \`main\` conflicted in:"
+            echo "Merging stable \`${{ steps.merge.outputs.tag }}\` into \`$OWNED_BRANCH\` conflicted in:"
             echo
             echo '```'
             cat /tmp/conflicts.txt
@@ -88,9 +93,9 @@ jobs:
             echo
             echo "Resolve locally:"
             echo '```'
-            echo "git fetch origin && git checkout custom/retheme && git merge origin/main"
+            echo "git fetch origin && git checkout $OWNED_BRANCH"
             echo "git remote add upstream https://github.com/music-assistant/mobile-app.git  # once"
-            echo "git fetch upstream main && git merge upstream/main"
+            echo "git fetch upstream tag ${{ steps.merge.outputs.tag }} && git merge ${{ steps.merge.outputs.tag }}"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           echo "::error::Upstream merge conflicted; see the run summary for the file list."

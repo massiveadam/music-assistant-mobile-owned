@@ -69,7 +69,6 @@ import io.music_assistant.client.data.model.client.items.AppMediaItem
 import io.music_assistant.client.data.model.client.items.Artist
 import io.music_assistant.client.data.model.client.items.Audiobook
 import io.music_assistant.client.data.model.client.items.PodcastEpisode
-import io.music_assistant.client.data.model.client.items.QualityTier
 import io.music_assistant.client.data.model.client.items.Track
 import io.music_assistant.client.data.model.client.items.canBeFavorited
 import io.music_assistant.client.data.model.client.presentationChapter

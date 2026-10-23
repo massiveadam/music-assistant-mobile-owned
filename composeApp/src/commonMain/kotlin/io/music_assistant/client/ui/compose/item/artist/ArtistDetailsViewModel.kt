@@ -1,5 +1,6 @@
 package io.music_assistant.client.ui.compose.item.artist
 
+import io.music_assistant.client.utils.HasConnectionData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.music_assistant.client.api.Request
@@ -29,9 +30,28 @@ import kotlinx.coroutines.launch
 
 class ArtistDetailsViewModel(
     private val artist: Artist,
-    mediaItemRepository: MediaItemRepository,
+    private val mediaItemRepository: MediaItemRepository,
     private val serviceClient: ServiceClient,
 ) : ViewModel() {
+    private val _discography = MutableStateFlow<DataState<MediaItemRepository.AlbumGroups>>(DataState.Loading())
+    val discography = _discography
+    private val _recovering = MutableStateFlow(false)
+    val recovering = _recovering
+
+    fun loadDiscography(recover: Boolean = false) {
+        viewModelScope.launch {
+            if (recover) _recovering.value = true
+            val owned = mediaItemRepository.fetchAlbumGroups(artist.itemId, artist.provider, inLibraryOnly = true)
+            owned.onSuccess { _discography.value = DataState.Data(it) }
+            val groups = mediaItemRepository.fetchAlbumGroups(artist.itemId, artist.provider, recover = recover)
+            groups.fold(
+                onSuccess = { _discography.value = DataState.Data(it) },
+                onFailure = { if (_discography.value !is DataState.Data) _discography.value = DataState.Error() },
+            )
+            _recovering.value = false
+        }
+    }
+
     private val fetchArtistItemsUseCase = FetchArtistItemsUseCase(mediaItemRepository)
 
     private val libraryItems = itemList(mediaItemRepository)
@@ -80,29 +100,10 @@ class ArtistDetailsViewModel(
 
     init {
         loadSections(artist)
+        loadDiscography()
     }
 
     private fun loadSections(artist: Artist) {
-        viewModelScope.launch {
-            if (artist.isInLibrary) {
-                libraryItems.set(Request.Artist.getAlbums(artist.itemId, artist.provider))
-            } else {
-                libraryItems.setEmpty()
-            }
-        }
-
-        viewModelScope.launch {
-            val artistItems = fetchArtistItemsUseCase.run(artist.providerGroups().map { ItemList.ArtistAlbums(it) })
-
-            if (artistItems != null) {
-                val (items, itemList, options) = artistItems
-                allProviderFilter.value = Section.ProviderFilter(itemList, options)
-                allItems.set(items, itemList.toRequests())
-            } else {
-                allItems.setEmpty()
-            }
-        }
-
         viewModelScope.launch {
             val providers = if (artist.isInLibrary) {
                 serviceClient.sendRequest(Request.Provider.all())
@@ -111,7 +112,9 @@ class ArtistDetailsViewModel(
             } else {
                 emptyList()
             }
-            val result = fetchArtistItemsUseCase.run(artist.topTracksOptions(providers))
+            val allowed = (serviceClient.sessionState.value as? HasConnectionData)?.user?.providerFilter.orEmpty()
+            val visibleProviders = providers.filter { it.type != "music" || allowed.isEmpty() || it.instanceId in allowed }
+            val result = fetchArtistItemsUseCase.run(artist.topTracksOptions(visibleProviders))
 
             if (result != null) {
                 val (items, itemList, options) = result

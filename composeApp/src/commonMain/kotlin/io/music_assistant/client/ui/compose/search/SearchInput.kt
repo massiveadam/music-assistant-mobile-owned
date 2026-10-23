@@ -41,7 +41,8 @@ fun SearchInput(
     modifier: Modifier = Modifier,
     query: String,
     onQueryChanged: (String) -> Unit = {},
-    onSearch: () -> Unit = {},
+    onSearchAction: () -> Unit = {},
+    placeholder: String = stringResource(Res.string.search_query_label),
     focusManager: FocusManager = LocalFocusManager.current,
 ) {
     val focusRequester = remember { FocusRequester() }
@@ -63,7 +64,7 @@ fun SearchInput(
         onValueChange = onQueryChanged,
         placeholder = {
             Text(
-                stringResource(Res.string.search_query_label),
+                placeholder,
                 style = textStyle,
             )
         },
@@ -71,7 +72,7 @@ fun SearchInput(
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         keyboardActions = KeyboardActions(
             onSearch = {
-                onSearch()
+                onSearchAction()
                 focusManager.clearFocus()
             },
         ),
@@ -81,7 +82,7 @@ fun SearchInput(
                 IconButton(
                     onClick = {
                         onQueryChanged("")
-                        onSearch()
+                        onSearchAction()
                     },
                 ) {
                     Icon(

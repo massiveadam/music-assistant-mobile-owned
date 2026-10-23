@@ -18,11 +18,20 @@ import io.music_assistant.client.data.model.client.items.AppMediaItem
 import io.music_assistant.client.data.model.client.items.Artist
 import io.music_assistant.client.data.model.client.items.Audiobook
 import io.music_assistant.client.data.model.client.items.Genre
+import io.music_assistant.client.data.model.client.items.MediaCollection
 import io.music_assistant.client.data.model.client.items.Playlist
 import io.music_assistant.client.data.model.client.items.Podcast
+import io.music_assistant.client.data.model.client.items.RecommendationFolder
 import io.music_assistant.client.settings.ViewMode
+import io.music_assistant.client.ui.compose.common.ConfirmationDialog
 import io.music_assistant.client.ui.compose.common.MenuItem
 import io.music_assistant.client.ui.compose.common.RemoveFromLibraryConfirmationDialog
+import io.music_assistant.client.ui.compose.common.providers.ProviderIconFetcher
+import musicassistantclient.composeapp.generated.resources.Res
+import musicassistantclient.composeapp.generated.resources.action_remove
+import musicassistantclient.composeapp.generated.resources.dialog_remove_from_playlist_message
+import musicassistantclient.composeapp.generated.resources.dialog_remove_from_playlist_title
+import org.jetbrains.compose.resources.stringResource
 
 @Composable
 fun AlbumWithMenu(
@@ -34,7 +43,7 @@ fun AlbumWithMenu(
     onPlayOption: PlayHandler<Album>,
     playlistActions: PlaylistActions? = null,
     libraryActions: LibraryActions,
-    providerIconFetcher: (@Composable (Modifier, String) -> Unit)?,
+    providerIconFetcher: ProviderIconFetcher?,
 ) {
     BrowsableItemWithMenu(
         modifier = when (viewMode) {
@@ -75,7 +84,7 @@ fun ArtistWithMenu(
     onNavigateClick: (Artist) -> Unit,
     onPlayOption: PlayHandler<Artist>,
     libraryActions: LibraryActions,
-    providerIconFetcher: (@Composable (Modifier, String) -> Unit)?,
+    providerIconFetcher: ProviderIconFetcher?,
 ) {
     BrowsableItemWithMenu(
         modifier = when (viewMode) {
@@ -113,7 +122,7 @@ fun PlaylistWithMenu(
     onNavigateClick: (Playlist) -> Unit,
     onPlayOption: PlayHandler<Playlist>,
     libraryActions: LibraryActions,
-    providerIconFetcher: (@Composable (Modifier, String) -> Unit)?,
+    providerIconFetcher: ProviderIconFetcher?,
 ) {
     BrowsableItemWithMenu(
         modifier = when (viewMode) {
@@ -151,9 +160,10 @@ fun AudiobookWithMenu(
     onNavigateClick: (Audiobook) -> Unit,
     onPlayOption: PlayHandler<Audiobook>,
     playlistActions: PlaylistActions? = null,
+    onRemoveFromPlaylist: (() -> Unit)? = null,
     libraryActions: LibraryActions,
     progressActions: ProgressActions? = null,
-    providerIconFetcher: (@Composable (Modifier, String) -> Unit)?,
+    providerIconFetcher: ProviderIconFetcher?,
 ) {
     BrowsableItemWithMenu(
         modifier = when (viewMode) {
@@ -164,6 +174,7 @@ fun AudiobookWithMenu(
         onNavigateClick = onNavigateClick,
         onPlayOption = onPlayOption,
         playlistActions = playlistActions,
+        onRemoveFromPlaylist = onRemoveFromPlaylist,
         libraryActions = libraryActions,
         progressActions = progressActions,
     ) { mod, onClick, onLongClick ->
@@ -187,13 +198,48 @@ fun AudiobookWithMenu(
 }
 
 @Composable
+fun MediaCollectionWithMenu(
+    item: MediaCollection,
+    viewMode: ViewMode = ViewMode.GRID,
+    onNavigateClick: (MediaCollection) -> Unit,
+    onPlayOption: PlayHandler<MediaCollection>,
+    libraryActions: LibraryActions,
+) {
+    BrowsableItemWithMenu(
+        modifier = when (viewMode) {
+            ViewMode.GRID -> Modifier
+            ViewMode.LIST -> Modifier.fillMaxWidth()
+        },
+        item = item,
+        onNavigateClick = onNavigateClick,
+        onPlayOption = onPlayOption,
+        libraryActions = libraryActions,
+    ) { mod, onClick, onLongClick ->
+        when (viewMode) {
+            ViewMode.LIST -> MediaCollectionRowItem(
+                modifier = mod,
+                item = item,
+                onClick = onClick,
+                onLongClick = onLongClick,
+            )
+            ViewMode.GRID -> MediaCollectionGridItem(
+                modifier = mod,
+                item = item,
+                onClick = onClick,
+                onLongClick = onLongClick,
+            )
+        }
+    }
+}
+
+@Composable
 fun GenreWithMenu(
     item: Genre,
     viewMode: ViewMode = ViewMode.GRID,
     onNavigateClick: (Genre) -> Unit,
     onPlayOption: PlayHandler<Genre>,
     libraryActions: LibraryActions,
-    providerIconFetcher: (@Composable (Modifier, String) -> Unit)?,
+    providerIconFetcher: ProviderIconFetcher?,
 ) {
     BrowsableItemWithMenu(
         modifier = when (viewMode) {
@@ -231,7 +277,7 @@ fun PodcastWithMenu(
     onNavigateClick: (Podcast) -> Unit,
     onPlayOption: PlayHandler<Podcast>,
     libraryActions: LibraryActions,
-    providerIconFetcher: (@Composable (Modifier, String) -> Unit)?,
+    providerIconFetcher: ProviderIconFetcher?,
 ) {
     BrowsableItemWithMenu(
         modifier = when (viewMode) {
@@ -262,6 +308,47 @@ fun PodcastWithMenu(
     }
 }
 
+/**
+ * A playable browse folder offers the playback block on long press. Other folders (provider
+ * roots, the ".." entry) are navigation only: no menu, and not dimmed.
+ */
+@Composable
+fun FolderWithMenu(
+    item: RecommendationFolder,
+    viewMode: ViewMode = ViewMode.GRID,
+    onNavigateClick: (RecommendationFolder) -> Unit,
+    onPlayOption: PlayHandler<RecommendationFolder>,
+    libraryActions: LibraryActions,
+) {
+    when {
+        item.isPlayable -> BrowsableItemWithMenu(
+            modifier = when (viewMode) {
+                ViewMode.GRID -> Modifier
+                ViewMode.LIST -> Modifier.fillMaxWidth()
+            },
+            item = item,
+            onNavigateClick = onNavigateClick,
+            onPlayOption = onPlayOption,
+            libraryActions = libraryActions,
+        ) { mod, onClick, onLongClick ->
+            FolderCell(
+                modifier = mod,
+                item = item,
+                viewMode = viewMode,
+                onClick = onClick,
+                onLongClick = onLongClick,
+            )
+        }
+
+        else -> FolderCell(
+            item = item,
+            viewMode = viewMode,
+            onClick = onNavigateClick,
+            onLongClick = {},
+        )
+    }
+}
+
 @Composable
 private fun <T : AppMediaItem> BrowsableItemWithMenu(
     modifier: Modifier = Modifier,
@@ -271,6 +358,7 @@ private fun <T : AppMediaItem> BrowsableItemWithMenu(
     containerItem: AppMediaItem? = null,
     onPlayOption: PlayHandler<T>,
     playlistActions: PlaylistActions? = null,
+    onRemoveFromPlaylist: (() -> Unit)? = null,
     libraryActions: LibraryActions,
     progressActions: ProgressActions? = null,
     itemComposable: @Composable (
@@ -284,6 +372,23 @@ private fun <T : AppMediaItem> BrowsableItemWithMenu(
     var showPlaylistDialog by rememberSaveable { mutableStateOf(false) }
     var showRemoveConfirmation by remember { mutableStateOf(false) }
     var showCollectionChooser by rememberSaveable { mutableStateOf(false) }
+    var showRemovePlaylistConfirmation by remember { mutableStateOf(false) }
+
+    val actions = resolveLongClickActions(
+        item = item,
+        personalSaved = io.music_assistant.client.ui.compose.personal.personalFavorite(item),
+        clickContext = clickContext,
+        librarySupported = item !is Genre && item !is RecommendationFolder && item !is MediaCollection,
+        canAddToPlaylist = playlistActions != null && item.supportsAddToPlaylist,
+        canRemoveFromPlaylist = onRemoveFromPlaylist != null,
+        progressSupported = progressActions != null && item is Audiobook,
+        customizationAllowed = false,
+    )
+
+    // Built outside the DropdownMenu so the multi-artist chooser dialog survives its dismissal.
+    val navOptions = navigateToItem
+        ?.let { item.navigationOptions(it, containerItem) }
+        ?: emptyList()
 
     Box(modifier = modifier) {
         // Browsable items stay navigable even when non-playable; dim + drop playback actions.
@@ -294,51 +399,36 @@ private fun <T : AppMediaItem> BrowsableItemWithMenu(
             onNavigateClick,
         ) { expandedItemId = item.itemId }
 
-        if (expandedItemId == item.itemId) {
-            val actions = resolveLongClickActions(
-                item = item,
-                personalSaved = io.music_assistant.client.ui.compose.personal.personalFavorite(item),
-                clickContext = clickContext,
-                librarySupported = item !is Genre,
-                canAddToPlaylist = playlistActions != null && item.supportsAddToPlaylist,
-                canRemoveFromPlaylist = false,
-                progressSupported = progressActions != null && item is Audiobook,
-                customizationAllowed = false,
-            )
-            val navOptions = navigateToItem
-                ?.let { item.navigationOptions(it, containerItem) }
-                ?: emptyList()
-
-            DropdownMenu(
-                expanded = true,
-                onDismissRequest = { expandedItemId = null },
-            ) {
-                ItemActionMenuItems(clickContext, actions) { action ->
-                    expandedItemId = null
-                    when (action) {
-                        is ItemAction.Play -> onPlayOption(item, action.queueOption, false, false)
-                        ItemAction.StartEndlessMix -> onPlayOption(item, QueueOption.REPLACE, true, false)
-                        ItemAction.AddToLibrary -> libraryActions.onLibraryClick(item)
-                        ItemAction.RemoveFromLibrary -> showRemoveConfirmation = true
-                        ItemAction.Favorite,
-                        ItemAction.Unfavorite,
-                        -> libraryActions.onFavoriteClick(item)
-                        ItemAction.AddToPlaylist -> showPlaylistDialog = true
-                        ItemAction.MarkPlayed -> progressActions?.onMarkPlayed(item)
-                        ItemAction.MarkUnplayed -> progressActions?.onMarkUnplayed(item)
-                        ItemAction.RemoveFromPlaylist -> Unit
-                        // Browsable items never surface Customize (playable-only menu entry).
-                        ItemAction.Customize -> Unit
-                        else -> Unit
-                    }
+        DropdownMenu(
+            expanded = expandedItemId == item.itemId,
+            onDismissRequest = { expandedItemId = null },
+        ) {
+            ItemActionMenuItems(clickContext, actions) { action ->
+                expandedItemId = null
+                when (action) {
+                    is ItemAction.Play -> onPlayOption(item, action.queueOption, false, false)
+                    ItemAction.StartEndlessMix -> onPlayOption(item, QueueOption.REPLACE, true, false)
+                    ItemAction.AddToLibrary -> libraryActions.onLibraryClick(item)
+                    ItemAction.RemoveFromLibrary -> showRemoveConfirmation = true
+                    ItemAction.Favorite,
+                    ItemAction.Unfavorite,
+                    -> libraryActions.onFavoriteClick(item)
+                    ItemAction.AddToPlaylist -> showPlaylistDialog = true
+                    ItemAction.MarkPlayed -> progressActions?.onMarkPlayed(item)
+                    ItemAction.MarkUnplayed -> progressActions?.onMarkUnplayed(item)
+                    ItemAction.RemoveFromPlaylist -> showRemovePlaylistConfirmation = true
+                    // Browsable items never surface Customize (playable-only menu entry).
+                    ItemAction.Customize -> Unit
+                    else -> Unit
                 }
-                if (item is Album) {
-                    androidx.compose.material3.DropdownMenuItem(text = { androidx.compose.material3.Text("Album collections / Listen Later") }, onClick = {
-                        expandedItemId = null; showCollectionChooser = true
-                    })
-                }
-                navOptions.forEach { it.MenuItem(onClose = { expandedItemId = null }) }
             }
+            if (item is Album) {
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { androidx.compose.material3.Text("Album collections / Listen Later") },
+                    onClick = { expandedItemId = null; showCollectionChooser = true },
+                )
+            }
+            navOptions.forEach { it.MenuItem(onClose = { expandedItemId = null }) }
         }
 
         if (showCollectionChooser && item is Album) {
@@ -357,6 +447,16 @@ private fun <T : AppMediaItem> BrowsableItemWithMenu(
                 item = item,
                 onConfirm = { libraryActions.onLibraryClick(item) },
                 onDismiss = { showRemoveConfirmation = false },
+            )
+        }
+
+        if (showRemovePlaylistConfirmation && onRemoveFromPlaylist != null) {
+            ConfirmationDialog(
+                title = stringResource(Res.string.dialog_remove_from_playlist_title),
+                message = stringResource(Res.string.dialog_remove_from_playlist_message, item.displayName),
+                confirmLabel = stringResource(Res.string.action_remove),
+                onConfirm = { onRemoveFromPlaylist.invoke() },
+                onDismiss = { showRemovePlaylistConfirmation = false },
             )
         }
     }

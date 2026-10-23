@@ -105,7 +105,7 @@ interface MediaItemRepository {
 class ServiceClientMediaItemRepository(
     private val apiClient: ServiceClient,
     private val factory: MediaItemFactory,
-    private val personalMusic: PersonalMusicRepository? = null,
+    override val personalMusic: PersonalMusicRepository? = null,
 ) : MediaItemRepository {
     // Singleton-scoped app-lifetime job; only used to keep [itemChanges]
     // hot. Survives subscriber turnover so quick navigation between screens
@@ -150,14 +150,14 @@ class ServiceClientMediaItemRepository(
             .filter { it.item.mediaType == type.serverValue }
             .mapNotNull { factory.create(it.item.asServer()) }
 
-    override suspend fun fetchAlbumGroups(itemId: String, provider: String, inLibraryOnly: Boolean = false,
-                                 recover: Boolean = false): Result<AlbumGroups> =
+    override suspend fun fetchAlbumGroups(itemId: String, provider: String, inLibraryOnly: Boolean,
+                                 recover: Boolean): Result<MediaItemRepository.AlbumGroups> =
         apiClient.sendRequest(if (recover && supportsSourceRecovery()) Request("music/artists/recover_sources", buildJsonObject {
             put("item_id", JsonPrimitive(itemId)); put("provider_instance_id_or_domain", JsonPrimitive(provider))
             put("refresh_catalog", JsonPrimitive(true))
         }) else browsingRequest(Request.Artist.getAlbumGroups(itemId, provider, inLibraryOnly))).mapCatching { answer ->
             val groups = answer.resultAs<ArtistAlbumGroups>() ?: error("Missing album groups")
-            AlbumGroups(
+            MediaItemRepository.AlbumGroups(
                 owned = factory.createList(groups.owned).filterIsInstance<Album>(),
                 all = factory.createList(groups.all).filterIsInstance<Album>(),
                 unavailableSources = groups.unavailableSources,
@@ -319,8 +319,12 @@ class ServiceClientMediaItemRepository(
  */
 suspend fun MediaItemRepository.fetchRecommendationRows(): Result<List<RecommendationFolder>> =
     withContext(Dispatchers.IO) {
-        fetchMediaItems(Request.Library.recommendations())
-            .map { items -> items.filterIsInstance<RecommendationFolder>() }
+        fetchMediaItems(Request.Library.recommendations()).map { items ->
+            items.filterIsInstance<RecommendationFolder>().filterNot {
+                (it.provider in listOf("library", "recommendations") && it.itemId == "listen_later_unplayed") ||
+                    (it.provider.startsWith("listen_later") && it.itemId == "album_collection")
+            }.map { if (it.provider in listOf("library", "recommendations") && it.itemId == "listen_later_starred") it.copy(name = "Saved albums") else it }
+        }
     }
 
 /** Items of one recommendation row, or null when the fetch failed (logged). */
@@ -369,7 +373,7 @@ suspend fun MediaItemRepository.fetchMediaItems(requests: List<Request>): Result
     for (request in requests) {
         val result = this.fetchMediaItems(request)
         if (result.isSuccess) {
-            items += result.getOrEmptyList()
+            items += result.getOrNull().orEmpty()
         } else {
             return result
         }

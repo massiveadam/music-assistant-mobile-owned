@@ -142,7 +142,17 @@ fun sharedModule(
         singleOf(::PlayerRequestFactory)    // Pure PlayerAction → Request mapper
         single { LocalPlayerEndpoints(get(), get(), CoroutineScope(SupervisorJob() + Dispatchers.Default)) }
         singleOf(::LocalPlayerAdapter)      // Local player: app side of the Sendspin module
-        single { io.music_assistant.client.api.PersonalApi(get()) }
+        single {
+            io.music_assistant.client.api.PersonalApi(
+                get(), get<io.music_assistant.client.utils.HttpClientFactory>().create {
+                    install(io.ktor.client.plugins.HttpTimeout) {
+                        requestTimeoutMillis = 60000
+                        connectTimeoutMillis = 10000
+                    }
+                    followRedirects = false
+                },
+            )
+        }
         // Offline downloads need platform storage and a local player (Android); else unsupported.
         single<io.music_assistant.client.offline.OfflineMusic> {
             val storage = getOrNull<io.music_assistant.client.offline.OfflineStorage>()
@@ -194,7 +204,7 @@ fun sharedModule(
         factory { BackgroundRestrictionViewModel(get(), get(), get()) }
         factory { SchemaVersionWarningViewModel(get()) }
         factory { ActionsViewModel(get(), get(), get(), get()) }
-        factory { SettingsViewModel(get(), get(), get(), get(), get()) }
+        factory { SettingsViewModel(get(), get(), get(), get(), get(), get()) }
         factory { DefaultClickActionsViewModel(get()) }
         factory { CarActionsViewModel(get(), get()) }
         factory { CarDspViewModel(get(), get()) }

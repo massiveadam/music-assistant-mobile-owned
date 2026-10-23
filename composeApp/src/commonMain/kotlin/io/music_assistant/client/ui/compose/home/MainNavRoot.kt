@@ -506,7 +506,7 @@ private fun mainNavEntryProvider(
                 contentPadding, { multiBackStack.removeLastOrNull() },
                 { item -> multiBackStack.add(MainNav.ItemDetails(item.itemId, item.mediaType, item.provider)) },
                 { item, option, radio, _ -> homeScreenViewModel.onPlayClick(item, option, radio) },
-                actionsViewModel, { modifier, provider -> actionsViewModel.getProviderIcon(provider)?.let { ProviderIcon(modifier, it) } },
+                actionsViewModel, providerViewModel.providerIconFetcher(),
             )
         }
         entry<MainNav.AlbumCollections> {
@@ -514,7 +514,7 @@ private fun mainNavEntryProvider(
                 contentPadding, { multiBackStack.removeLastOrNull() },
                 { item -> multiBackStack.add(MainNav.ItemDetails(item.itemId, item.mediaType, item.provider)) },
                 { item, option, radio, _ -> homeScreenViewModel.onPlayClick(item, option, radio) },
-                actionsViewModel, { modifier, provider -> actionsViewModel.getProviderIcon(provider)?.let { ProviderIcon(modifier, it) } },
+                actionsViewModel, providerViewModel.providerIconFetcher(),
             )
         }
 

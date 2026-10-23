@@ -5,14 +5,20 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -63,15 +69,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import io.music_assistant.client.AppVersion
+import io.music_assistant.client.AppVersion as OwnedAppVersion
 import io.music_assistant.client.api.ConnectionInfo
 import io.music_assistant.client.api.Defaults
 import io.music_assistant.client.data.model.server.ServerInfo
 import io.music_assistant.client.data.model.server.User
-import io.music_assistant.client.player.sendspin.SendspinConfig
-import io.music_assistant.client.player.sendspin.audio.Codecs
 import io.music_assistant.client.settings.ConnectionHistoryEntry
 import io.music_assistant.client.settings.ConnectionType
+import io.music_assistant.client.settings.SettingsRepository
 import io.music_assistant.client.ui.compose.auth.AuthenticationPanel
 import io.music_assistant.client.ui.compose.common.OverflowMenuButton
 import io.music_assistant.client.ui.compose.common.OverflowMenuOption
@@ -83,7 +88,9 @@ import io.music_assistant.client.ui.compose.nav.TopBarLayout
 import io.music_assistant.client.ui.theme.ThemeSetting
 import io.music_assistant.client.ui.theme.ThemeViewModel
 import io.music_assistant.client.updater.UpdateCheckResult
+import io.music_assistant.client.utils.AppVersion
 import io.music_assistant.client.utils.DataConnectionState
+import io.music_assistant.client.utils.LocalNetworkOnboardingResources
 import io.music_assistant.client.utils.SessionState
 import io.music_assistant.client.utils.isIpPort
 import io.music_assistant.client.utils.isValidBasePath
@@ -98,11 +105,14 @@ import musicassistantclient.composeapp.generated.resources.cd_select_codec
 import musicassistantclient.composeapp.generated.resources.common_back
 import musicassistantclient.composeapp.generated.resources.common_cancel
 import musicassistantclient.composeapp.generated.resources.common_delete
+import musicassistantclient.composeapp.generated.resources.common_done
 import musicassistantclient.composeapp.generated.resources.nav_settings
 import musicassistantclient.composeapp.generated.resources.settings_about_description
 import musicassistantclient.composeapp.generated.resources.settings_about_learn_more
 import musicassistantclient.composeapp.generated.resources.settings_allow_landscape
 import musicassistantclient.composeapp.generated.resources.settings_allow_landscape_hint
+import musicassistantclient.composeapp.generated.resources.settings_app_documentation
+import musicassistantclient.composeapp.generated.resources.settings_app_version_info
 import musicassistantclient.composeapp.generated.resources.settings_buffer_size
 import musicassistantclient.composeapp.generated.resources.settings_codec_preference
 import musicassistantclient.composeapp.generated.resources.settings_connect
@@ -138,7 +148,6 @@ import musicassistantclient.composeapp.generated.resources.settings_remote_id_hi
 import musicassistantclient.composeapp.generated.resources.settings_remote_id_invalid
 import musicassistantclient.composeapp.generated.resources.settings_saved_connections
 import musicassistantclient.composeapp.generated.resources.settings_scan_qr
-import musicassistantclient.composeapp.generated.resources.settings_sendspin_require_encryption
 import musicassistantclient.composeapp.generated.resources.settings_server
 import musicassistantclient.composeapp.generated.resources.settings_server_base_path
 import musicassistantclient.composeapp.generated.resources.settings_server_base_path_hint
@@ -174,6 +183,10 @@ fun SettingsScreen(goHome: () -> Unit, exitApp: () -> Unit, goToDownloads: () ->
     val sendspinEnabled by viewModel.sendspinEnabled.collectAsStateWithLifecycle()
     val hasCrashLog by viewModel.hasCrashLog.collectAsStateWithLifecycle()
     val isPreparingShare by viewModel.isPreparingShare.collectAsStateWithLifecycle()
+    val localNetworkOnboardingShown by viewModel.localNetworkOnboardingShown
+        .collectAsStateWithLifecycle()
+    val localNetworkBlocked by viewModel.localNetworkBlocked.collectAsStateWithLifecycle()
+    val probeGranted by viewModel.lastLocalNetworkProbeGranted.collectAsStateWithLifecycle()
 
     // Only allow back navigation when authenticated
     BackHandler(enabled = true) {
@@ -219,12 +232,17 @@ fun SettingsScreen(goHome: () -> Unit, exitApp: () -> Unit, goToDownloads: () ->
                     .fillMaxSize()
                     .padding(horizontal = 16.dp)
                     .clearFocusOnScroll()
-                    .verticalScroll(rememberScrollState()),
+                    .verticalScroll(rememberScrollState())
+                    // Settings sits outside AdaptiveNavigationBarLayout, so nothing else reserves
+                    // the system nav bar; padding the scroll content keeps the last item reachable.
+                    .windowInsetsPadding(WindowInsets.navigationBars),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 // Reachable without a server connection, so downloads play anywhere.
                 io.music_assistant.client.ui.compose.offline.OfflineDownloadsEntry(goToDownloads)
-                var ipAddress by remember { mutableStateOf(Defaults.URI) }
+                AppVersionSection(viewModel.appVersion)
+
+                var ipAddress by remember { mutableStateOf("") }
                 var port by remember { mutableStateOf(Defaults.PORT.toString()) }
                 var isTls by remember { mutableStateOf(false) }
                 var basePath by remember { mutableStateOf("") }
@@ -239,6 +257,8 @@ fun SettingsScreen(goHome: () -> Unit, exitApp: () -> Unit, goToDownloads: () ->
                 }
 
                 // Track if we've already attempted auto-reconnect
+                // Sticky for the screen's lifetime: once the iOS permission is determined,
+                // retries no longer wait on the prompt, so suppressing repeats is intended.
                 var autoReconnectAttempted by remember { mutableStateOf(false) }
 
                 // Auto-reconnect on error ONLY if user hasn't changed the connection info
@@ -246,48 +266,64 @@ fun SettingsScreen(goHome: () -> Unit, exitApp: () -> Unit, goToDownloads: () ->
                 // Does NOT auto-reconnect when user is using WebRTC (different failure mode)
                 val preferredMethod by viewModel.preferredConnectionMethod.collectAsStateWithLifecycle()
                 LaunchedEffect(sessionState) {
+                    val errorState = sessionState as? SessionState.Disconnected.Error
                     val connInfo = savedConnectionInfo
-                    if (sessionState is SessionState.Disconnected.Error &&
-                        connInfo != null &&
+                    if (errorState != null &&
                         !autoReconnectAttempted &&
                         preferredMethod != "webrtc"
                     ) {
-                        // Only auto-reconnect if text fields match saved connection info
-                        // (i.e., user hasn't changed anything)
-                        val userChangedConnectionInfo =
-                            ipAddress != connInfo.host ||
-                                    port != connInfo.port.toString() ||
-                                    isTls != connInfo.isTls ||
-                                    basePath != connInfo.basePath
+                        if (connInfo != null) {
+                            // Only auto-reconnect if text fields match saved connection info
+                            // (i.e., user hasn't changed anything)
+                            val userChangedConnectionInfo =
+                                ipAddress != connInfo.host ||
+                                        port != connInfo.port.toString() ||
+                                        isTls != connInfo.isTls ||
+                                        basePath != connInfo.basePath
 
-                        if (!userChangedConnectionInfo) {
-                            // User is trying to reconnect to same server - auto-retry
+                            if (!userChangedConnectionInfo) {
+                                // User is trying to reconnect to same server - auto-retry
+                                autoReconnectAttempted = true
+                                viewModel.attemptConnection(
+                                    connInfo.host,
+                                    connInfo.port.toString(),
+                                    connInfo.isTls,
+                                    connInfo.basePath,
+                                )
+                            }
+                            // If user changed connection info, don't auto-retry - let them manually retry
+                        } else if (errorState.reason?.let(viewModel::isLikelyLocalNetworkBlocked) == true) {
+                            // Fresh install (no saved connection): retry once — the first
+                            // attempt is consumed by the platform permission prompt.
                             autoReconnectAttempted = true
-                            viewModel.attemptConnection(
-                                connInfo.host,
-                                connInfo.port.toString(),
-                                connInfo.isTls,
-                                connInfo.basePath,
-                            )
+                            viewModel.attemptConnection(ipAddress, port, isTls, basePath)
                         }
-                        // If user changed connection info, don't auto-retry - let them manually retry
                     }
                 }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
-                ) {
-                    if (!isAuthenticated) {
+                if (!isAuthenticated) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                    ) {
                         OutlinedButton(onClick = exitApp) { Text(stringResource(Res.string.settings_exit_app)) }
                     }
                 }
+
+                val connectAttemptInFlight by viewModel.connectAttemptInFlight
+                    .collectAsStateWithLifecycle()
 
                 when (sessionState) {
                     is SessionState.Disconnected -> {
                         AboutSection()
                         Spacer(modifier = Modifier.size(16.dp))
                         GitHubUpdatesSection(viewModel = viewModel)
+                        LocalNetworkOnboardingCard(
+                            resources = viewModel.localNetworkOnboardingResources,
+                            visible = connectionHistory.isEmpty() &&
+                                !localNetworkOnboardingShown,
+                            onGotIt = viewModel::dismissLocalNetworkOnboarding,
+                        )
                         ConnectionMethodTabs(
                             viewModel = viewModel,
                             ipAddress = ipAddress,
@@ -300,23 +336,26 @@ fun SettingsScreen(goHome: () -> Unit, exitApp: () -> Unit, goToDownloads: () ->
                             onBasePathChange = { basePath = it },
                             onDirectConnect = {
                                 viewModel.attemptConnection(
-                                    ipAddress,
+                                    ipAddress.ifBlank { Defaults.URI },
                                     port,
                                     isTls,
                                     basePath,
                                 )
                             },
-                            directConnectEnabled = ipAddress.isValidHost() &&
+                            directConnectEnabled = ipAddress.ifBlank { Defaults.URI }.isValidHost() &&
                                     port.isIpPort() &&
-                                    basePath.isValidBasePath(),
+                                    basePath.isValidBasePath() &&
+                                    !connectAttemptInFlight,
                             sessionState = sessionState,
                             connectionHistory = connectionHistory,
+                            localNetworkBlocked = localNetworkBlocked,
+                            probeGranted = probeGranted,
                         )
                     }
 
                     SessionState.Connecting -> {
                         ConnectingSection(
-                            ipAddress = ipAddress,
+                            ipAddress = ipAddress.ifBlank { Defaults.URI },
                             port = port,
                             preferredMethod = preferredMethod,
                             onCancel = { viewModel.disconnect() },
@@ -325,7 +364,7 @@ fun SettingsScreen(goHome: () -> Unit, exitApp: () -> Unit, goToDownloads: () ->
 
                     is SessionState.Reconnecting -> {
                         ConnectingSection(
-                            ipAddress = ipAddress,
+                            ipAddress = ipAddress.ifBlank { Defaults.URI },
                             port = port,
                             preferredMethod = preferredMethod,
                             onCancel = { viewModel.disconnect() },
@@ -506,7 +545,7 @@ private fun GitHubUpdatesSection(viewModel: SettingsViewModel) {
         SectionTitle("Updates (GitHub)")
 
         Text(
-            text = "Current Version: ${AppVersion.versionName}",
+            text = "Current Version: ${OwnedAppVersion.versionName}",
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurface,
@@ -616,6 +655,25 @@ private fun GitHubUpdatesSection(viewModel: SettingsViewModel) {
 }
 
 @Composable
+private fun AppVersionSection(appVersion: AppVersion) {
+    val uriHandler = LocalUriHandler.current
+    SectionCard {
+        Text(
+            text = stringResource(Res.string.settings_app_version_info, appVersion.name, appVersion.code),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+        )
+        Spacer(modifier = Modifier.size(4.dp))
+        Text(
+            text = stringResource(Res.string.settings_app_documentation),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.clickable { uriHandler.openUri("https://music-assistant.github.io/mobile-app/") },
+        )
+    }
+}
+
+@Composable
 private fun AboutSection() {
     val uriHandler = LocalUriHandler.current
     SectionCard {
@@ -635,11 +693,33 @@ private fun AboutSection() {
 }
 
 @Composable
+private fun LocalNetworkOnboardingCard(
+    resources: LocalNetworkOnboardingResources?,
+    visible: Boolean,
+    onGotIt: () -> Unit,
+) {
+    if (!visible || resources == null) return
+    SectionCard {
+        SectionTitle(stringResource(resources.title))
+        Text(
+            text = stringResource(resources.body),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Spacer(modifier = Modifier.size(12.dp))
+        OutlinedButton(onClick = onGotIt, modifier = Modifier.fillMaxWidth()) {
+            Text(stringResource(Res.string.common_done))
+        }
+    }
+}
+
+@Composable
 private fun ExperimentalPill() {
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(6.dp))
             .background(MaterialTheme.colorScheme.primary)
+            .wrapContentWidth(unbounded = true)
             .padding(horizontal = 6.dp, vertical = 1.dp),
     ) {
         Text(
@@ -647,10 +727,13 @@ private fun ExperimentalPill() {
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onPrimary,
+            maxLines = 1,
+            softWrap = false,
         )
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ConnectionMethodTabs(
     viewModel: SettingsViewModel,
@@ -666,14 +749,24 @@ private fun ConnectionMethodTabs(
     directConnectEnabled: Boolean,
     sessionState: SessionState,
     connectionHistory: List<ConnectionHistoryEntry>,
+    localNetworkBlocked: Boolean,
+    probeGranted: Boolean?,
 ) {
     val preferredMethod by viewModel.preferredConnectionMethod.collectAsStateWithLifecycle()
     val selectedTab = if (preferredMethod == "webrtc") 1 else 0
     val webrtcRemoteId by viewModel.webrtcRemoteId.collectAsStateWithLifecycle()
     var showHistoryDialog by remember { mutableStateOf(false) }
+    val clientCertificateAlias by viewModel.clientCertificateAlias.collectAsStateWithLifecycle()
 
     val directHasToken = port.toIntOrNull()
-        ?.let { viewModel.hasCredentialsForDirect(ipAddress, it, isTls, basePath) } ?: false
+        ?.let {
+            viewModel.hasCredentialsForDirect(
+                ipAddress.ifBlank { Defaults.URI },
+                it,
+                isTls,
+                basePath,
+            )
+        } ?: false
     val webrtcHasToken = webrtcRemoteId.isNotBlank() &&
             viewModel.hasCredentialsForWebRTC(webrtcRemoteId)
 
@@ -695,9 +788,13 @@ private fun ConnectionMethodTabs(
                 selected = selectedTab == 1,
                 onClick = { viewModel.setPreferredConnectionMethod("webrtc") },
                 text = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.Center,
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        itemVerticalAlignment = Alignment.CenterVertically,
+                        maxItemsInEachRow = 1,
+                    ) {
                         Text(stringResource(Res.string.settings_connection_webrtc))
-                        Spacer(modifier = Modifier.size(6.dp))
                         ExperimentalPill()
                     }
                 },
@@ -723,6 +820,8 @@ private fun ConnectionMethodTabs(
                     onConnect = onDirectConnect,
                     enabled = directConnectEnabled,
                     onShowHistory = { showHistoryDialog = true },
+                    clientCertificateAlias = clientCertificateAlias,
+                    onClientCertificateAliasChange = viewModel::setClientCertificateAlias,
                 )
             }
 
@@ -740,16 +839,18 @@ private fun ConnectionMethodTabs(
         }
 
         val error = (sessionState as? SessionState.Disconnected.Error)?.reason
-        if (error != null) {
-            val errorMessage = error.message?.toDisplayString()
+        val errorMessage = viewModel.localNetworkErrorGuidance(
+            error = error,
+            probeGranted = probeGranted,
+            locallyBlocked = localNetworkBlocked,
+        )?.toDisplayString() ?: error?.message?.toDisplayString()
 
-            if (errorMessage != null) {
-                Text(
-                    errorMessage.string(),
-                    modifier = Modifier.padding(top = 8.dp),
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
+        if (errorMessage != null) {
+            Text(
+                errorMessage.string(),
+                modifier = Modifier.padding(top = 8.dp),
+                color = MaterialTheme.colorScheme.error,
+            )
         }
     }
 
@@ -795,6 +896,8 @@ private fun DirectConnectionContent(
     onConnect: () -> Unit,
     enabled: Boolean,
     onShowHistory: () -> Unit,
+    clientCertificateAlias: String?,
+    onClientCertificateAliasChange: (String?) -> Unit,
 ) {
     val focusManager = LocalFocusManager.current
 
@@ -806,7 +909,7 @@ private fun DirectConnectionContent(
         value = ipAddress,
         onValueChange = onIpAddressChange,
         label = { Text(stringResource(Res.string.settings_server_host)) },
-        placeholder = { Text("homeassistant.local") },
+        placeholder = { Text(Defaults.URI) },
         singleLine = true,
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
         keyboardActions = KeyboardActions(
@@ -875,12 +978,26 @@ private fun DirectConnectionContent(
         Text(stringResource(Res.string.settings_use_tls))
     }
 
+    if (isTls) {
+        ClientCertificateSetting(
+            host = ipAddress.ifBlank { Defaults.URI },
+            port = port.toIntOrNull() ?: -1,
+            alias = clientCertificateAlias,
+            onAliasChange = onClientCertificateAliasChange,
+        )
+    }
+
     // Live preview of the address the app will actually contact.
     Text(
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = 12.dp),
-        text = ConnectionInfo.previewWsUrl(ipAddress, port, isTls, basePath),
+        text = ConnectionInfo.previewWsUrl(
+            ipAddress.ifBlank { Defaults.URI },
+            port,
+            isTls,
+            basePath,
+        ),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -1256,7 +1373,7 @@ private fun SendspinSection(
 
         // Codec selection
         OverflowMenuButton(
-            options = Codecs.list.map { item ->
+            options = SettingsRepository.CODECS.map { item ->
                 OverflowMenuOption(
                     title = item.localizedTitle(),
                 ) { viewModel.setSendspinCodecPreference(item) }
@@ -1327,9 +1444,9 @@ private fun SendspinSection(
             Slider(
                 value = sendspinBufferCapacityMb.toFloat(),
                 onValueChange = { viewModel.setSendspinBufferCapacityMb(it.roundToInt()) },
-                valueRange = SendspinConfig.BUFFER_MB_MIN.toFloat()..SendspinConfig.BUFFER_MB_MAX.toFloat(),
-                steps = (SendspinConfig.BUFFER_MB_MAX - SendspinConfig.BUFFER_MB_MIN) /
-                        SendspinConfig.BUFFER_MB_STEP - 1,
+                valueRange = SettingsRepository.BUFFER_MB_MIN.toFloat()..SettingsRepository.BUFFER_MB_MAX.toFloat(),
+                steps = (SettingsRepository.BUFFER_MB_MAX - SettingsRepository.BUFFER_MB_MIN) /
+                        SettingsRepository.BUFFER_MB_STEP - 1,
                 enabled = !sendspinEnabled,
             )
         }
@@ -1358,28 +1475,6 @@ private fun SendspinSection(
 
         // Require-encryption toggle: refuse the legacy cleartext protocol
         // when the server is too old for encrypted Sendspin.
-        val sendspinRequireEncryption by viewModel.sendspinRequireEncryption
-            .collectAsStateWithLifecycle()
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Checkbox(
-                checked = sendspinRequireEncryption,
-                onCheckedChange = { viewModel.setSendspinRequireEncryption(it) },
-                enabled = !sendspinEnabled,
-            )
-            Text(
-                text = stringResource(Res.string.settings_sendspin_require_encryption),
-                color = if (sendspinEnabled) {
-                    MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
-                } else {
-                    MaterialTheme.colorScheme.onBackground
-                },
-            )
-        }
 
         // Connection fields (only shown when using custom connection)
         if (sendspinUseCustomConnection) {

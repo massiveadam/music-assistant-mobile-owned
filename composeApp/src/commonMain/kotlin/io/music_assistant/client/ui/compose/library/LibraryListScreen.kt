@@ -1,5 +1,3 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
-
 package io.music_assistant.client.ui.compose.library
 
 import androidx.compose.foundation.layout.Column
@@ -8,9 +6,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.SearchOff
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -29,6 +26,7 @@ import io.music_assistant.client.data.model.client.LibraryFilters
 import io.music_assistant.client.data.model.client.MediaType
 import io.music_assistant.client.data.model.client.SortOption
 import io.music_assistant.client.data.model.client.items.AppMediaItem
+import io.music_assistant.client.settings.SeriesGrouping
 import io.music_assistant.client.settings.ViewMode
 import io.music_assistant.client.ui.compose.common.DataState
 import io.music_assistant.client.ui.compose.common.SelectOption
@@ -42,6 +40,7 @@ import io.music_assistant.client.ui.compose.nav.TopBarLayout
 import io.music_assistant.client.ui.compose.nav.TwoRowTopAppBar
 import io.music_assistant.client.ui.compose.search.SearchInput
 import musicassistantclient.composeapp.generated.resources.Res
+import musicassistantclient.composeapp.generated.resources.cd_close
 import musicassistantclient.composeapp.generated.resources.common_back
 import musicassistantclient.composeapp.generated.resources.library_quick_search
 import musicassistantclient.composeapp.generated.resources.media_type_albums
@@ -52,6 +51,7 @@ import musicassistantclient.composeapp.generated.resources.media_type_playlists
 import musicassistantclient.composeapp.generated.resources.media_type_podcasts
 import musicassistantclient.composeapp.generated.resources.media_type_radio
 import musicassistantclient.composeapp.generated.resources.media_type_tracks
+import musicassistantclient.composeapp.generated.resources.search_query_label
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -88,6 +88,8 @@ fun LibraryListScreen(
                 onBack = onBack,
                 onToggleViewMode = { viewModeViewModel.toggleFor(state.mediaType) },
                 viewMode = viewMode,
+                seriesGrouping = state.seriesGrouping,
+                onToggleSeriesGrouping = libraryListViewModel::onSeriesGroupingToggled,
                 searchQuery = state.searchQuery,
                 onSearchQueryChanged = libraryListViewModel::onSearchQueryChanged,
                 onSearch = libraryListViewModel::onSearch,
@@ -102,7 +104,7 @@ fun LibraryListScreen(
             )
         },
     ) {
-        ItemList(
+        ItemListContent(
             data = state.dataState,
             onNavigateClick = onNavigateClick,
             onPlayClick = { item, option, radio, _ ->
@@ -142,6 +144,8 @@ private fun LibraryListTopBar(
     onBack: () -> Unit,
     onToggleViewMode: () -> Unit,
     viewMode: ViewMode,
+    seriesGrouping: SeriesGrouping,
+    onToggleSeriesGrouping: () -> Unit,
     searchQuery: String,
     onSearchQueryChanged: (String) -> Unit,
     onSearch: () -> Unit,
@@ -155,7 +159,6 @@ private fun LibraryListTopBar(
     onLoadFilterOptions: () -> Unit,
 ) {
     var showSearch by remember { mutableStateOf(searchQuery.isNotEmpty()) }
-
     Column {
         TwoRowTopAppBar(
             title = {
@@ -163,7 +166,8 @@ private fun LibraryListTopBar(
                     SearchInput(
                         query = searchQuery,
                         onQueryChanged = onSearchQueryChanged,
-                        onSearch = onSearch,
+                        onSearchAction = onSearch,
+                        placeholder = stringResource(Res.string.search_query_label),
                     )
                 } else {
                     val title = when (mediaType) {
@@ -196,13 +200,11 @@ private fun LibraryListTopBar(
                 }
             },
             navigationIcon = {
-                if (!showSearch) {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            stringResource(Res.string.common_back),
-                        )
-                    }
+                IconButton(onClick = onBack) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowBack,
+                        stringResource(Res.string.common_back),
+                    )
                 }
             },
             actions = {
@@ -228,14 +230,11 @@ private fun LibraryListTopBar(
                         }
                     },
                 ) {
-                    Icon(
-                        imageVector = if (showSearch) {
-                            Icons.Default.SearchOff
-                        } else {
-                            Icons.Default.Search
-                        },
-                        contentDescription = stringResource(Res.string.library_quick_search),
-                    )
+                    if (showSearch) {
+                        Icon(Icons.Default.Close, stringResource(Res.string.cd_close))
+                    } else {
+                        Icon(Icons.Default.Search, stringResource(Res.string.library_quick_search))
+                    }
                 }
             },
             secondRow = {
@@ -244,6 +243,13 @@ private fun LibraryListTopBar(
                     mediaType = mediaType,
                     onSortChanged = { onSortChanged(it) },
                 )
+
+                if (mediaType == MediaType.AUDIOBOOK) {
+                    SeriesGroupingToggle(
+                        grouping = seriesGrouping,
+                        onToggle = onToggleSeriesGrouping,
+                    )
+                }
 
                 if (mediaType != MediaType.TRACK) {
                     ViewModeToggle(

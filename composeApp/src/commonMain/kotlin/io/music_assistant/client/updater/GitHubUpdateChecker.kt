@@ -6,7 +6,6 @@ import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
 import io.music_assistant.client.AppVersion
-import io.music_assistant.client.utils.createPlatformHttpClient
 import io.music_assistant.client.utils.myJson
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -44,7 +43,7 @@ sealed class UpdateCheckResult {
 }
 
 class GitHubUpdateChecker(
-    private val client: HttpClient = createPlatformHttpClient(),
+    private val client: HttpClient,
 ) {
     suspend fun checkForUpdates(
         repo: String,

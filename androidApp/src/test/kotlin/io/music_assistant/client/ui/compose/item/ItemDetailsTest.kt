@@ -15,24 +15,34 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import io.music_assistant.client.data.repository.MediaItemRepository
+import io.music_assistant.client.api.APICommands
+import io.music_assistant.client.api.Request
 import io.music_assistant.client.data.model.client.AppMediaItemFixtures
 import io.music_assistant.client.data.model.client.QueueOption
+import io.music_assistant.client.data.model.client.items.Album
+import io.music_assistant.client.data.model.client.items.AppMediaItem
+import io.music_assistant.client.data.repository.MediaItemRepository
 import io.music_assistant.client.support.get
+import io.music_assistant.client.support.rules.createTestRuleChain
 import io.music_assistant.client.ui.compose.common.DataState
 import io.music_assistant.client.ui.compose.common.ExtractedColors
 import io.music_assistant.client.ui.compose.common.ExtractedColorsSource
 import io.music_assistant.client.ui.compose.support.inScrollable
 import io.music_assistant.client.utils.support.MockFunction0
 import io.music_assistant.client.utils.support.MockFunction2
+import kotlinx.serialization.json.jsonPrimitive
 import musicassistantclient.composeapp.generated.resources.Res
 import musicassistantclient.composeapp.generated.resources.action_go_to_artist
 import musicassistantclient.composeapp.generated.resources.cd_album_item
 import musicassistantclient.composeapp.generated.resources.cd_more
 import musicassistantclient.composeapp.generated.resources.cd_view_all
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.koin.core.context.loadKoinModules
+import org.koin.dsl.module
+import org.koin.core.context.GlobalContext.get as getKoin
 import kotlin.test.assertEquals
 
 private val NoColors = object : ExtractedColorsSource {
@@ -43,7 +53,7 @@ private val NoColors = object : ExtractedColorsSource {
 /**
  * Composes with inspection mode on so the Koin-backed dynamic-colors seams
  * (`rememberDynamicColorsEnabled`, `dynamicColorsMenuOption`) short-circuit to their
- * @Preview defaults instead of hitting a Koin graph this test doesn't start.
+ * @Preview defaults. Artist section view models still use the test Koin graph.
  */
 private fun ComposeContentTestRule.setInspectableContent(content: @Composable () -> Unit) =
     setContent {
@@ -53,7 +63,15 @@ private fun ComposeContentTestRule.setInspectableContent(content: @Composable ()
 @RunWith(AndroidJUnit4::class)
 class ItemDetailsTest {
     @get:Rule
+    val testRuleChain = createTestRuleChain()
+
+    @get:Rule
     val composeTestRule = createComposeRule()
+
+    @Before
+    fun setEmptyArtistSections() {
+        setArtistAlbums(owned = emptyList(), all = emptyList())
+    }
 
     @Test
     fun `displays artists`() {
@@ -62,6 +80,7 @@ class ItemDetailsTest {
             AppMediaItemFixtures.album(artist = artist),
             AppMediaItemFixtures.album(artist = artist),
         )
+        setArtistAlbums(owned = emptyList(), all = albums)
 
         composeTestRule.setInspectableContent {
             ItemDetails(
@@ -69,7 +88,6 @@ class ItemDetailsTest {
                     itemState = DataState.Data(artist),
                     albumsState = DataState.NoData(),
                     playableItemsState = DataState.NoData(),
-                    artistSections = ArtistSections(discography = DataState.Data(MediaItemRepository.AlbumGroups(emptyList(), albums, emptyList()))),
                 ),
                 geEditablePlaylists = suspend { emptyList() },
                 fetchColors = NoColors,
@@ -100,18 +118,16 @@ class ItemDetailsTest {
 
     @Test
     fun `displays artists with unified albums`() {
-        val artist = AppMediaItemFixtures.artist()
-        val owned = AppMediaItemFixtures.album(artist = artist).copy(name = "Local purchase")
+        val artist = AppMediaItemFixtures.artist().copy(provider = "library")
+        val owned = AppMediaItemFixtures.album(artist = artist).copy(name = "Local purchase", provider = "library")
         val streaming = AppMediaItemFixtures.album(artist = artist).copy(name = "Streaming exclusive")
+        setArtistAlbums(owned = listOf(owned), all = listOf(owned, streaming))
         composeTestRule.setInspectableContent {
             ItemDetails(
                 state = ItemDetailsViewModel.State(
                     itemState = DataState.Data(artist),
                     albumsState = DataState.NoData(),
                     playableItemsState = DataState.NoData(),
-                    artistSections = ArtistSections(
-                        discography = DataState.Data(MediaItemRepository.AlbumGroups(listOf(owned), listOf(owned, streaming), emptyList())),
-                    ),
                 ),
                 geEditablePlaylists = suspend { emptyList() },
                 fetchColors = NoColors,
@@ -127,6 +143,30 @@ class ItemDetailsTest {
             onNode(hasText("Owned albums")).assertIsDisplayed()
             onNode(hasText("Other")).assertIsDisplayed()
         }
+    }
+
+    private fun setArtistAlbums(owned: List<Album>, all: List<Album>) {
+        // ArtistContent now obtains its sections from a separate Koin view model,
+        // rather than ItemDetailsViewModel.State. Feed that view model's repository.
+        val repository = getKoin().get<MediaItemRepository>()
+        val fixtureRepository = object : MediaItemRepository by repository {
+            override suspend fun fetchAlbumGroups(itemId: String, provider: String, inLibraryOnly: Boolean, recover: Boolean) =
+                Result.success(MediaItemRepository.AlbumGroups(owned, if (inLibraryOnly) owned else all, emptyList()))
+
+            override suspend fun fetchMediaItems(request: Request): Result<List<AppMediaItem>> =
+                when (request.command) {
+                    APICommands.MUSIC_ARTISTS_ARTIST_ALBUMS -> Result.success(
+                        if (request.args?.get("provider_instance_id_or_domain")?.jsonPrimitive?.content == "library") {
+                            owned
+                        } else {
+                            all
+                        },
+                    )
+                    APICommands.MUSIC_ARTISTS_TOP_TRACKS -> Result.success(emptyList())
+                    else -> repository.fetchMediaItems(request)
+                }
+        }
+        loadKoinModules(module { single<MediaItemRepository> { fixtureRepository } })
     }
 
     @Test

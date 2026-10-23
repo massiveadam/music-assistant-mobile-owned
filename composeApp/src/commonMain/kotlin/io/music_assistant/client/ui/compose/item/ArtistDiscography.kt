@@ -81,7 +81,7 @@ fun ArtistDiscography(
     onPlayClick: PlayHandler<AppMediaItem>,
     playlistActions: PlaylistActions,
     libraryActions: LibraryActions,
-    providerIconFetcher: @Composable (Modifier, String) -> Unit,
+    providerIconFetcher: @Composable (Modifier, String, String) -> Unit,
 ) {
     val releases = remember(owned, all) { groupArtistReleases(all = all, ownedAlbums = owned) }
     if (releases.isEmpty()) return
@@ -332,7 +332,7 @@ private fun DiscographySection(
     onPlayClick: PlayHandler<AppMediaItem>,
     playlistActions: PlaylistActions,
     libraryActions: LibraryActions,
-    providerIconFetcher: @Composable (Modifier, String) -> Unit,
+    providerIconFetcher: @Composable (Modifier, String, String) -> Unit,
 ) {
     var expanded by rememberSaveable("${id}_expanded") { mutableStateOf(defaultExpanded) }
     var visibleCount by rememberSaveable("${id}_visible_count") { mutableStateOf(DEFAULT_SECTION_LIMIT) }
@@ -403,7 +403,7 @@ private fun ReleaseGridItem(
     onPlayClick: PlayHandler<AppMediaItem>,
     playlistActions: PlaylistActions,
     libraryActions: LibraryActions,
-    providerIconFetcher: @Composable (Modifier, String) -> Unit,
+    providerIconFetcher: @Composable (Modifier, String, String) -> Unit,
 ) {
     Box(modifier = Modifier.fillMaxWidth()) {
         AlbumWithMenu(

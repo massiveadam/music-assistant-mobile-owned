@@ -194,7 +194,6 @@ class HomeScreenViewModel(
                                 }
                                 stopJobs()
                                 jobs.add(watchPlayersData())
-                                jobs.add(watchSelectedPlayerData())
                                 jobs.add(watchAlbumLibraryChanges())
                             }
 
@@ -301,7 +300,8 @@ class HomeScreenViewModel(
 
         // Show every row as a loading placeholder, then fetch each row's items
         // as its own job.
-        setRecommendationRows(folders.map { RecommendationRowState(it, DataState.Loading()) })
+        setRecommendationRows(folders.map { RecommendationRowState(it, if (mediaItemRepository.supportsRecommendationRowItems()) DataState.Loading() else DataState.Data(it.items.orEmpty())) })
+        if (!mediaItemRepository.supportsRecommendationRowItems()) return
         coroutineScope {
             folders.forEach { folder ->
                 launch {
