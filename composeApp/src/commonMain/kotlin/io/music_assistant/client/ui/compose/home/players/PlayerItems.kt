@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Waves
 import androidx.compose.material.icons.outlined.FavoriteBorder
@@ -49,8 +48,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -60,6 +61,7 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
+import io.music_assistant.client.data.model.client.MediaType
 import io.music_assistant.client.data.model.client.Player
 import io.music_assistant.client.data.model.client.PlayerData
 import io.music_assistant.client.data.model.client.PlayerDataFixtures
@@ -84,15 +86,16 @@ import io.music_assistant.client.ui.compose.common.icons.TrackIcon
 import io.music_assistant.client.ui.compose.common.items.ChooseArtistDialog
 import io.music_assistant.client.ui.compose.common.items.artistNavigation
 import io.music_assistant.client.ui.compose.common.painters.rememberPlaceholderPainter
-import io.music_assistant.client.ui.fadingEdges
 import io.music_assistant.client.ui.inactive
 import io.music_assistant.client.ui.theme.favoriteTint
 import io.music_assistant.client.ui.theme.textMuted
+import io.music_assistant.client.ui.utils.fadingEdges
 import io.music_assistant.client.utils.formatDuration
 import io.music_assistant.sendspin.api.PlayerState
 import kotlinx.coroutines.flow.Flow
 import musicassistantclient.composeapp.generated.resources.Res
 import musicassistantclient.composeapp.generated.resources.action_go_to_artist
+import musicassistantclient.composeapp.generated.resources.action_go_to_track
 import musicassistantclient.composeapp.generated.resources.cd_ambient_sound_on
 import musicassistantclient.composeapp.generated.resources.cd_favorite
 import musicassistantclient.composeapp.generated.resources.cd_lyrics
@@ -120,7 +123,6 @@ fun CompactPlayerItem(
     colors: PlayerColors,
     playerAction: (PlayerData, PlayerAction) -> Unit = { _, _ -> },
     onSelectPlayer: (() -> Unit)? = null,
-    onGroupButton: (() -> Unit)? = null,
     showAdditionalControls: Boolean = false,
     sendSpinState: PlayerState?,
     // Server preference gate for chapter-based Next enablement and the chapter subtitle.
@@ -280,7 +282,6 @@ fun CompactPlayerItem(
                     controlTint = colors.controlTint,
                     sendSpinState = sendSpinState,
                     onSelectPlayer = onSelectPlayer,
-                    onGroupButton = onGroupButton ?: {},
                 )
             }
         }
@@ -305,7 +306,8 @@ fun FullPlayerItem(
     item: PlayerData,
     colors: PlayerColors,
     playerAction: (PlayerData, PlayerAction) -> Unit,
-    onFavoriteClick: (AppMediaItem) -> Unit,
+    // Null hides the heart: the user cannot edit the library.
+    onFavoriteChange: ((AppMediaItem, Boolean?) -> Unit)?,
     onFavoriteStreamClick: (PlayerData) -> Unit = {},
     // See MainDataSource.canFavoriteCurrentlyPlaying: on-air song AND server support.
     canFavoriteStream: Boolean = false,
@@ -396,12 +398,18 @@ fun FullPlayerItem(
         val timelineDuration = currentChapter?.duration?.toFloat() ?: duration
         val timelinePosition =
             currentChapter?.relativeSec(displayPosition.toDouble())?.toFloat() ?: displayPosition
+        // A radio stream cannot seek, not even in a song whose length it reports.
+        val seekable = timelineDuration != null && currentMedia?.mediaType != MediaType.RADIO
 
-        // The artist line does the overflow's "Go to artist"; a chapter name in that line has no artist.
+        val titleTrack = (item.queueInfo?.currentItem?.track as? Track)?.takeIf { !poweredOff }
+        // The title does the overflow's "Go to track".
         // Remembered: the position tick recomposes this item several times a second.
-        val artists = (item.queueInfo?.currentItem?.track as? Track)
-            ?.takeIf { !poweredOff && currentChapter == null }
-            ?.artists.orEmpty()
+        val onTitleClick = remember(titleTrack, navigateToItem) {
+            titleTrack?.let { track -> { navigateToItem(track) } }
+        }
+        val goToTrackLabel = stringResource(Res.string.action_go_to_track)
+        // The artist line does the overflow's "Go to artist"; a chapter name in that line has no artist.
+        val artists = titleTrack?.takeIf { currentChapter == null }?.artists.orEmpty()
         val onSubtitleClick = remember(artists, navigateToItem, onChooseArtist) {
             artistNavigation(artists, navigateToItem) { onChooseArtist() }
         }
@@ -412,7 +420,15 @@ fun FullPlayerItem(
                 .fillMaxWidth()
                 .clearAndSetSemantics {
                     contentDescription = trackContentDescription
-                    // The cleared subtree hides the line's own click, so expose it here.
+                    // The cleared subtree hides the lines' own clicks, so expose them here.
+                    onTitleClick?.let {
+                        customActions = listOf(
+                            CustomAccessibilityAction(goToTrackLabel) {
+                                it()
+                                true
+                            },
+                        )
+                    }
                     onSubtitleClick?.let {
                         onClick(goToArtistLabel) {
                         it()
@@ -425,6 +441,7 @@ fun FullPlayerItem(
             Text(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .then(onTitleClick?.let { Modifier.clickable(onClick = it) } ?: Modifier)
                     .fadingEdges()
                     .basicMarquee()
                     .padding(horizontal = FULL_PLAYER_HORIZONTAL_PADDING)
@@ -540,7 +557,7 @@ fun FullPlayerItem(
             Slider(
                 value = sliderPosition,
                 valueRange = timelineDuration?.let { 0f..it } ?: 0f..1f,
-                enabled = displayPosition.takeIf { timelineDuration != null } != null,
+                enabled = seekable,
                 onValueChange = {
                     if (userDragPosition == null) dragChapter = currentChapter
                     userDragPosition = it  // Track drag position locally
@@ -557,7 +574,7 @@ fun FullPlayerItem(
                 },
                 modifier = Modifier.fillMaxWidth(),
                 thumb = {
-                    sliderPosition.takeIf { timelineDuration != null }?.let {
+                    sliderPosition.takeIf { seekable }?.let {
                         SliderDefaults.Thumb(
                             interactionSource = remember { MutableInteractionSource() },
                             thumbSize = DpSize(16.dp, 16.dp),
@@ -768,18 +785,13 @@ fun FullPlayerItem(
                         tint = colors.controlTint,
                     )
                 }
-            } else if (currentTrack?.canBeFavorited == true) {
-                val isFavorite = currentTrack.favorite == true
-                IconButton(
+            } else if (currentTrack?.canBeFavorited == true && onFavoriteChange != null) {
+                PlayerFavoriteButton(
+                    item = currentTrack,
+                    tint = colors.controlTint,
+                    onFavoriteChange = onFavoriteChange,
                     modifier = Modifier.size(favoriteSlot),
-                    onClick = { onFavoriteClick(currentTrack) },
-                ) {
-                    Icon(
-                        imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-                        contentDescription = stringResource(Res.string.cd_favorite),
-                        tint = if (isFavorite) favoriteTint else colors.controlTint,
-                    )
-                }
+                )
             } else {
                 Spacer(Modifier.size(favoriteSlot)) // keep controls centered when heart is hidden
             }
@@ -851,7 +863,7 @@ private fun FullPlayerItemPoweredOffPreview() {
             item = PlayerDataFixtures.playerData(canPower = true, isPowered = false),
             colors = previewPoweredOffColors,
             playerAction = { _, _ -> },
-            onFavoriteClick = {},
+            onFavoriteChange = null,
             livePositionFlow = null,
         )
     }

@@ -15,6 +15,7 @@ import io.music_assistant.client.data.model.client.ClickContext
 import io.music_assistant.client.data.model.client.MediaType
 import io.music_assistant.client.data.model.client.SubItemContext
 import io.music_assistant.client.data.model.client.items.AppMediaItem
+import io.music_assistant.client.ui.compose.common.items.AlbumSubtitle
 import io.music_assistant.client.ui.compose.common.items.ItemSortChip
 import io.music_assistant.client.ui.compose.common.viewmodel.ActionsViewModel
 import io.music_assistant.client.ui.compose.library.ItemListContent
@@ -42,11 +43,11 @@ fun ItemListScreen(
     clickContext: ClickContext,
 ) {
     val state by itemListViewModel.state.collectAsStateWithLifecycle()
+    val query by itemListViewModel.query.collectAsStateWithLifecycle()
     val viewMode by viewModeViewModel.viewModeFor(mediaType).collectAsStateWithLifecycle()
 
     TopBarLayout(
         topBar = {
-            val query = state.query
             TwoRowTopAppBar(
                 title = {
                     query?.let {
@@ -92,15 +93,15 @@ fun ItemListScreen(
         ItemListContent(
             data = state.items,
             onNavigateClick = onNavigateClick,
-            onPlayClick = { item, option, radio, _ ->
-                actionsViewModel.onPlayClick(item, option, radio)
-            },
+            onPlayClick = actionsViewModel::onPlayClick,
             playlistActions = actionsViewModel,
             libraryActions = actionsViewModel,
             progressActions = actionsViewModel,
             contentPadding = contentPadding,
             viewMode = viewMode,
             clickContext = clickContext,
+            // Every ItemList is an artist's list, so the artist name would repeat on each album.
+            albumSubtitle = AlbumSubtitle.YEAR,
         )
     }
 }

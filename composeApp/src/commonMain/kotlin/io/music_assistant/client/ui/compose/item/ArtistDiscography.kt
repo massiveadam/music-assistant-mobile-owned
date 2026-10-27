@@ -305,9 +305,9 @@ fun ArtistDiscography(
                                 versionsRelease = null
                                 onNavigateClick(item)
                             },
-                            onPlayOption = { album, option, radio, fromHere ->
+                            onPlayOption = { album, mode ->
                                 versionsRelease = null
-                                onPlayClick(album, option, radio, fromHere)
+                                onPlayClick(album, mode)
                             },
                             playlistActions = playlistActions,
                             libraryActions = libraryActions,
@@ -413,8 +413,8 @@ private fun ReleaseGridItem(
                 if (release.editions.size > 1) onShowVersions(release) else onNavigateClick(album)
             },
             navigateToItem = onNavigateClick,
-            onPlayOption = { album, option, radio, fromHere ->
-                onPlayClick(album, option, radio, fromHere)
+            onPlayOption = { album, mode ->
+                onPlayClick(album, mode)
             },
             playlistActions = playlistActions,
             libraryActions = libraryActions,

@@ -161,6 +161,8 @@ class MediaItemFactory(
                 fullyPlayed = fullyPlayed,
                 resumePositionMs = resumePositionMs,
                 releaseDate = metadata?.releaseDate,
+                episodeNumber = episodeNumber,
+                season = season,
                 version = version,
                 position = intPosition,
                 source = server,
@@ -204,6 +206,7 @@ class MediaItemFactory(
                 uri = uri,
                 images = resolveImageInfo(image, metadata),
                 isPlayable = isPlayable == true,
+                canPlayPause = canPlayPause == true,
             )
 
             MediaType.AUDIOBOOK -> Audiobook(

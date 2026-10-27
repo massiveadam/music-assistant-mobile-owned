@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -25,6 +26,8 @@ import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.outlined.Lyrics
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
@@ -46,7 +49,10 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -54,14 +60,18 @@ import androidx.window.core.layout.WindowSizeClass
 import coil3.compose.AsyncImage
 import io.music_assistant.client.data.model.client.AppMediaItemFixtures
 import io.music_assistant.client.data.model.client.ImageType
-import io.music_assistant.client.data.model.client.QueueOption
 import io.music_assistant.client.data.model.client.items.Album
 import io.music_assistant.client.data.model.client.items.AppMediaItem
 import io.music_assistant.client.data.model.client.items.Artist
 import io.music_assistant.client.data.model.client.items.Genre
 import io.music_assistant.client.data.model.client.items.MediaCollection
+import io.music_assistant.client.data.model.client.items.RefreshItemAction
+import io.music_assistant.client.data.model.client.items.Track
+import io.music_assistant.client.data.play.PlayMode
 import io.music_assistant.client.imageloader.rememberArtworkRequest
 import io.music_assistant.client.ui.INACTIVE_ALPHA
+import io.music_assistant.client.ui.compose.common.LocalDislikeSupported
+import io.music_assistant.client.ui.compose.common.LocalGrantedScopes
 import io.music_assistant.client.ui.compose.common.OverflowMenuButton
 import io.music_assistant.client.ui.compose.common.OverflowMenuOption
 import io.music_assistant.client.ui.compose.common.PlayerColors
@@ -83,15 +93,19 @@ import io.music_assistant.client.ui.compose.common.painters.rememberPlaceholderP
 import io.music_assistant.client.ui.compose.common.providers.ProviderIconFetcher
 import io.music_assistant.client.ui.compose.search.SearchInput
 import io.music_assistant.client.ui.contentColorByLuminance
-import io.music_assistant.client.ui.fadingEdges
 import io.music_assistant.client.ui.inactive
-import io.music_assistant.client.utils.WindowClass
+import io.music_assistant.client.ui.utils.WindowClass
+import io.music_assistant.client.ui.utils.fadingEdges
 import musicassistantclient.composeapp.generated.resources.Res
+import musicassistantclient.composeapp.generated.resources.action_find_on_music_services
 import musicassistantclient.composeapp.generated.resources.action_go_to_artist
+import musicassistantclient.composeapp.generated.resources.action_lyrics
+import musicassistantclient.composeapp.generated.resources.action_refresh_item
 import musicassistantclient.composeapp.generated.resources.action_similar_artists
 import musicassistantclient.composeapp.generated.resources.cd_close
 import musicassistantclient.composeapp.generated.resources.cd_find_in_list
 import musicassistantclient.composeapp.generated.resources.cd_more
+import musicassistantclient.composeapp.generated.resources.cd_refreshing_item
 import musicassistantclient.composeapp.generated.resources.common_back
 import musicassistantclient.composeapp.generated.resources.find_in_list_label
 import musicassistantclient.composeapp.generated.resources.refresh
@@ -106,7 +120,7 @@ fun ItemHeader(
         MaterialTheme.colorScheme.primary,
     ),
     providerIconFetcher: ProviderIconFetcher? = null,
-    onPlayClick: (QueueOption, Boolean) -> Unit = { _, _ -> },
+    onPlayClick: (PlayMode) -> Unit = {},
     navigateToItem: (AppMediaItem) -> Unit = {},
 ) {
     // Art color on top, fading down to the surface the Screen actually paints, so the
@@ -129,12 +143,16 @@ fun ItemHeader(
 
         val textAndControls = @Composable { textAlign: TextAlign ->
             ItemText(item, textAlign, navigateToItem, Modifier.padding(top = 16.dp))
-            ItemPlayButton(
-                item,
-                onPlayClick = onPlayClick,
-                tint = colors.controlTint,
+            Row(
                 modifier = Modifier.padding(top = 8.dp),
-            )
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                ItemPlayButton(item, onPlayClick = onPlayClick, tint = colors.controlTint)
+                if (item is Album && !LocalInspectionMode.current) {
+                    io.music_assistant.client.ui.compose.personal.PersonalSaveButton(item)
+                }
+            }
         }
 
         if (WindowClass.isWide()) {
@@ -172,7 +190,11 @@ internal fun ItemTopBar(
     playlistActions: PlaylistActions?,
     navigateToItem: (AppMediaItem) -> Unit,
     onSimilarArtistsClick: () -> Unit,
+    onLyricsClick: (() -> Unit)? = null,
     onRefresh: (() -> Unit)? = null,
+    refreshAction: RefreshItemAction? = null,
+    refreshingItem: Boolean = false,
+    onRefreshItem: () -> Unit = {},
     query: String?,
     onQueryChanged: ((String?) -> Unit)?,
 ) {
@@ -215,6 +237,16 @@ internal fun ItemTopBar(
                 }
             },
             actions = {
+                if (refreshingItem) {
+                    val description = stringResource(Res.string.cd_refreshing_item)
+                    Box(
+                        modifier = Modifier.size(48.dp).semantics { contentDescription = description },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp), color = onBar, strokeWidth = 2.dp)
+                    }
+                }
+
                 if (searchEnabled && query != null) {
                     IconButton(onClick = { onQueryChanged(null) }) {
                         Icon(Icons.Default.Close, stringResource(Res.string.cd_close))
@@ -241,6 +273,11 @@ internal fun ItemTopBar(
                         playlistActions = playlistActions,
                         navigateToItem = navigateToItem,
                         onSimilarArtistsClick = onSimilarArtistsClick,
+                        onLyricsClick = onLyricsClick,
+                        refreshAction = refreshAction,
+                        refreshingItem = refreshingItem,
+                        onRefreshItem = onRefreshItem,
+                        onRemovedFromLibrary = onBack,
                     )
                 }
             },
@@ -255,6 +292,12 @@ private fun ItemOverflow(
     playlistActions: PlaylistActions?,
     navigateToItem: (AppMediaItem) -> Unit,
     onSimilarArtistsClick: () -> Unit,
+    onLyricsClick: (() -> Unit)?,
+    refreshAction: RefreshItemAction?,
+    refreshingItem: Boolean,
+    onRefreshItem: () -> Unit,
+    // The page shows the removed item, so it closes with the removal, like the web app.
+    onRemovedFromLibrary: () -> Unit,
 ) {
     var showPlaylistDialog by rememberSaveable { mutableStateOf(false) }
     var showRemoveConfirmation by remember { mutableStateOf(false) }
@@ -272,9 +315,37 @@ private fun ItemOverflow(
     } else {
         emptyList()
     }
+    val lyrics = listOfNotNull(
+        onLyricsClick?.let {
+            OverflowMenuOption(
+                title = stringResource(Res.string.action_lyrics),
+                icon = Icons.Outlined.Lyrics,
+                onClick = it,
+            )
+        },
+    )
+    // Detail-only like the similar artists: the server refreshes the item that the page shows.
+    val refresh = listOfNotNull(
+        refreshAction?.let { action ->
+            OverflowMenuOption(
+                title = stringResource(
+                    when (action) {
+                        RefreshItemAction.REFRESH -> Res.string.action_refresh_item
+                        RefreshItemAction.FIND_ON_MUSIC_SERVICES -> Res.string.action_find_on_music_services
+                    },
+                ),
+                icon = Icons.Default.Refresh,
+                enabled = !refreshingItem,
+                onClick = onRefreshItem,
+            )
+        },
+    )
 
     val canonical = resolveDetailOverflowActions(
         item = item,
+        personalSaved = io.music_assistant.client.ui.compose.personal.personalFavorite(item),
+        canEditLibrary = LocalGrantedScopes.current.canEditLibrary,
+        dislikeSupported = LocalDislikeSupported.current,
         librarySupported = libraryActions != null && item !is Genre && item !is MediaCollection,
         canAddToPlaylist = playlistActions != null && item !is MediaCollection,
     ).map { action ->
@@ -283,9 +354,7 @@ private fun ItemOverflow(
                 ItemAction.AddToLibrary -> libraryActions?.onLibraryClick(item)
                 ItemAction.RemoveFromLibrary -> showRemoveConfirmation = true
 
-                ItemAction.Favorite,
-                ItemAction.Unfavorite,
-                    -> libraryActions?.onFavoriteClick(item)
+                is ItemAction.SetFavorite -> libraryActions?.onFavoriteChange(item, it.favorite)
 
                 ItemAction.AddToPlaylist -> showPlaylistDialog = true
                 else -> Unit
@@ -293,8 +362,8 @@ private fun ItemOverflow(
         }
     }
     OverflowMenuButton(
-        options = canonical + item.navigationOptions(navigateToItem) + similarArtists +
-            dynamicColorsMenuOption(),
+        options = canonical + item.navigationOptions(navigateToItem, containerItem = item) + similarArtists +
+            lyrics + refresh + dynamicColorsMenuOption(),
     ) { onClick ->
         IconButton(onClick = onClick) {
             Icon(
@@ -315,7 +384,10 @@ private fun ItemOverflow(
     if (showRemoveConfirmation) {
         RemoveFromLibraryConfirmationDialog(
             item = item,
-            onConfirm = { libraryActions?.onLibraryClick(item) },
+            onConfirm = {
+                libraryActions?.onLibraryClick(item)
+                onRemovedFromLibrary()
+            },
             onDismiss = { showRemoveConfirmation = false },
         )
     }
@@ -345,7 +417,7 @@ private fun ItemText(
                 .fadingEdges()
                 .basicMarquee()
                 .padding(horizontal = 16.dp),
-            text = item.name,
+            text = (item as? Album)?.year?.let { "${item.name} ($it)" } ?: item.name,
             textAlign = textAlign,
             style = MaterialTheme.typography.titleLarge,
         )
@@ -365,9 +437,13 @@ private fun ItemText(
             }
         }
 
-        // An album's subtitle is its artist list; tapping it does the overflow's "Go to artist".
+        // An album's or a track's subtitle is its artist list; tapping it does the overflow's "Go to artist".
         val onSubtitleClick = rememberArtistNavigation(
-            artists = (item as? Album)?.artists.orEmpty(),
+            artists = when (item) {
+                is Album -> item.artists
+                is Track -> item.artists
+                else -> emptyList()
+            },
             navigateToItem = navigateToItem,
         )
         item.localizedSubtitle()?.let {

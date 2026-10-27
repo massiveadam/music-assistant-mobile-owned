@@ -4,7 +4,14 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /** Highest server schema_version this client is built and tested against. */
-const val LOCAL_SCHEMA_VERSION = 59
+const val LOCAL_SCHEMA_VERSION = 65
+
+/**
+ * API schema of server 2.11.0. Every 2.11 behaviour change in the app gates on this one constant,
+ * so an earlier 2.11 beta gets the 2.10 behaviour. The value follows the `dev` branch until 2.11.0
+ * is released.
+ */
+const val SERVER_2_11_SCHEMA = 96
 
 @Serializable
 data class ServerInfo(
@@ -18,6 +25,8 @@ data class ServerInfo(
     @SerialName("internal_url") var internalUrl: String? = null,
     @SerialName("external_url") var externalUrl: String? = null,
     @SerialName("has_remote_access") var hasRemoteAccess: Boolean = false,
+    /** The server does not run from an official release build (schema 87, server 2.11). */
+    @SerialName("unsupported_install") var unsupportedInstall: Boolean = false,
     // @SerialName("homeassistant_addon") var homeassistantAddon: Boolean? = null,
     // @SerialName("onboard_done") var onboardDone: Boolean? = null
 )

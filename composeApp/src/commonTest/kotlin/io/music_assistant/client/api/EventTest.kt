@@ -5,7 +5,9 @@ import io.music_assistant.client.data.model.server.events.CoreStateUpdatedEvent
 import io.music_assistant.client.data.model.server.events.GenericEvent
 import io.music_assistant.client.data.model.server.events.PlayerRemovedEvent
 import io.music_assistant.client.data.model.server.events.PlayerUpdatedEvent
+import io.music_assistant.client.data.model.server.events.PlaylogUpdatedEvent
 import io.music_assistant.client.data.model.server.events.ProviderEvent
+import io.music_assistant.client.data.model.server.events.ProvidersUpdatedEvent
 import io.music_assistant.client.data.model.server.events.QueueAddedEvent
 import io.music_assistant.client.utils.myJson
 import kotlinx.serialization.json.Json
@@ -13,6 +15,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -64,6 +67,35 @@ class EventTest {
         assertTrue(decoded is ProviderEvent)
         assertEquals("ai_radio", decoded.objectId)
         assertEquals(JsonPrimitive("queue_dj_updated"), decoded.data?.get("event"))
+    }
+
+    @Test
+    fun decodesProvidersUpdatedWithoutItsPayload() {
+        val raw = """{
+            "event": "providers_updated",
+            "object_id": null,
+            "data": [{"instance_id": "spotify--1", "name": "Spotify", "domain": "spotify"}]
+        }"""
+
+        assertTrue(parse(raw).event() is ProvidersUpdatedEvent)
+    }
+
+    @Test
+    fun decodesPlaylogUpdatedWithAndWithoutAUser() {
+        fun playlog(userId: String) = """{
+            "event": "playlog_updated",
+            "object_id": "library://track/1",
+            "data": {"uri": "library://track/1", "media_type": "track", "fully_played": true,
+                     "seconds_played": 0, "userid": $userId}
+        }"""
+
+        val own = parse(playlog("\"u1\"")).event()
+        val everyone = parse(playlog("null")).event()
+
+        assertTrue(own is PlaylogUpdatedEvent)
+        assertEquals("u1", own.data.userId)
+        assertTrue(everyone is PlaylogUpdatedEvent)
+        assertNull(everyone.data.userId)
     }
 
     @Test
@@ -202,6 +234,22 @@ class EventTest {
         assertEquals(59, decoded.data.schemaVersion)
         assertEquals("https://ma.example.com", decoded.data.externalUrl)
         assertTrue(decoded.data.hasRemoteAccess)
+        // Server 2.10 does not send `unsupported_install`.
+        assertFalse(decoded.data.unsupportedInstall)
+    }
+
+    @Test
+    fun decodesUnsupportedInstallFlag() {
+        val raw = """{
+            "event": "core_state_updated",
+            "object_id": null,
+            "data": {"server_id": "srv1", "schema_version": 96, "unsupported_install": true}
+        }"""
+
+        val decoded = parse(raw).event()
+
+        assertTrue(decoded is CoreStateUpdatedEvent)
+        assertTrue(decoded.data.unsupportedInstall)
     }
 
     @Test

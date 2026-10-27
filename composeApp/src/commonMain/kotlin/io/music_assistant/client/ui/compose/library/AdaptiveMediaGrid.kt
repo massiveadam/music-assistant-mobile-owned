@@ -18,6 +18,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -36,6 +37,7 @@ import io.music_assistant.client.data.model.client.items.RecommendationFolder
 import io.music_assistant.client.data.model.client.items.SoundEffect
 import io.music_assistant.client.data.model.client.items.Track
 import io.music_assistant.client.settings.ViewMode
+import io.music_assistant.client.ui.compose.common.items.AlbumSubtitle
 import io.music_assistant.client.ui.compose.common.items.AlbumWithMenu
 import io.music_assistant.client.ui.compose.common.items.ArtistWithMenu
 import io.music_assistant.client.ui.compose.common.items.AudioSourceWithMenu
@@ -70,9 +72,14 @@ fun AdaptiveMediaGrid(
     libraryActions: LibraryActions,
     progressActions: ProgressActions? = null,
     contentPadding: PaddingValues,
+    albumSubtitle: AlbumSubtitle = AlbumSubtitle.ARTISTS,
 ) {
     val isRow = viewMode == ViewMode.LIST
     val itemKeys = remember(items) { items.lazyListOccurrenceKeys() }
+
+    // derivedStateOf tracks only State reads; plain parameters would stay at their first values.
+    val currentHasMore by rememberUpdatedState(hasMore)
+    val currentIsLoadingMore by rememberUpdatedState(isLoadingMore)
 
     // Detect when we're near the end and trigger load more
     val shouldLoadMore by remember {
@@ -82,7 +89,7 @@ fun AdaptiveMediaGrid(
             val lastVisibleItem = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
 
             // Load more when we're within 10 items of the end
-            hasMore && !isLoadingMore && totalItems > 0 && lastVisibleItem >= totalItems - 10
+            currentHasMore && !currentIsLoadingMore && totalItems > 0 && lastVisibleItem >= totalItems - 10
         }
     }
 
@@ -130,6 +137,7 @@ fun AdaptiveMediaGrid(
                     playlistActions = playlistActions,
                     libraryActions = libraryActions,
                     providerIconFetcher = null,
+                    subtitle = albumSubtitle,
                 )
 
                 is Playlist -> PlaylistWithMenu(

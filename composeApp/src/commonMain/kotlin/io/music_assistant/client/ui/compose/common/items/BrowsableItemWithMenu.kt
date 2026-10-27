@@ -12,7 +12,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import io.music_assistant.client.data.model.client.QueueOption
 import io.music_assistant.client.data.model.client.items.Album
 import io.music_assistant.client.data.model.client.items.AppMediaItem
 import io.music_assistant.client.data.model.client.items.Artist
@@ -24,6 +23,8 @@ import io.music_assistant.client.data.model.client.items.Podcast
 import io.music_assistant.client.data.model.client.items.RecommendationFolder
 import io.music_assistant.client.settings.ViewMode
 import io.music_assistant.client.ui.compose.common.ConfirmationDialog
+import io.music_assistant.client.ui.compose.common.LocalDislikeSupported
+import io.music_assistant.client.ui.compose.common.LocalGrantedScopes
 import io.music_assistant.client.ui.compose.common.MenuItem
 import io.music_assistant.client.ui.compose.common.RemoveFromLibraryConfirmationDialog
 import io.music_assistant.client.ui.compose.common.providers.ProviderIconFetcher
@@ -44,6 +45,7 @@ fun AlbumWithMenu(
     playlistActions: PlaylistActions? = null,
     libraryActions: LibraryActions,
     providerIconFetcher: ProviderIconFetcher?,
+    subtitle: AlbumSubtitle = AlbumSubtitle.ARTISTS,
 ) {
     BrowsableItemWithMenu(
         modifier = when (viewMode) {
@@ -65,6 +67,7 @@ fun AlbumWithMenu(
                 onClick = onClick,
                 onLongClick = onLongClick,
                 providerIconFetcher = providerIconFetcher,
+                subtitle = subtitle,
             )
             ViewMode.GRID -> AlbumGridItem(
                 modifier = mod,
@@ -72,6 +75,7 @@ fun AlbumWithMenu(
                 onClick = onClick,
                 onLongClick = onLongClick,
                 providerIconFetcher = providerIconFetcher,
+                subtitle = subtitle,
             )
         }
     }
@@ -367,7 +371,8 @@ private fun <T : AppMediaItem> BrowsableItemWithMenu(
         onLongClick: (T) -> Unit,
     ) -> Unit,
 ) {
-    val clickContext = LocalClickActionConfig.current.context
+    val clickActionConfig = LocalClickActionConfig.current
+    val clickContext = clickActionConfig.context
     var expandedItemId by remember { mutableStateOf<String?>(null) }
     var showPlaylistDialog by rememberSaveable { mutableStateOf(false) }
     var showRemoveConfirmation by remember { mutableStateOf(false) }
@@ -378,10 +383,13 @@ private fun <T : AppMediaItem> BrowsableItemWithMenu(
         item = item,
         personalSaved = io.music_assistant.client.ui.compose.personal.personalFavorite(item),
         clickContext = clickContext,
+        canEditLibrary = LocalGrantedScopes.current.canEditLibrary,
+        dislikeSupported = LocalDislikeSupported.current,
         librarySupported = item !is Genre && item !is RecommendationFolder && item !is MediaCollection,
         canAddToPlaylist = playlistActions != null && item.supportsAddToPlaylist,
         canRemoveFromPlaylist = onRemoveFromPlaylist != null,
         progressSupported = progressActions != null && item is Audiobook,
+        playMediaSupport = clickActionConfig.playMediaSupport,
         customizationAllowed = false,
     )
 
@@ -406,13 +414,14 @@ private fun <T : AppMediaItem> BrowsableItemWithMenu(
             ItemActionMenuItems(clickContext, actions) { action ->
                 expandedItemId = null
                 when (action) {
-                    is ItemAction.Play -> onPlayOption(item, action.queueOption, false, false)
-                    ItemAction.StartEndlessMix -> onPlayOption(item, QueueOption.REPLACE, true, false)
+                    is ItemAction.Play,
+                    ItemAction.StartEndlessMix,
+                    ItemAction.PlayFromHere,
+                    ItemAction.PlayShuffled,
+                    -> action.toPlayMode()?.let { onPlayOption(item, it) }
                     ItemAction.AddToLibrary -> libraryActions.onLibraryClick(item)
                     ItemAction.RemoveFromLibrary -> showRemoveConfirmation = true
-                    ItemAction.Favorite,
-                    ItemAction.Unfavorite,
-                    -> libraryActions.onFavoriteClick(item)
+                    is ItemAction.SetFavorite -> libraryActions.onFavoriteChange(item, action.favorite)
                     ItemAction.AddToPlaylist -> showPlaylistDialog = true
                     ItemAction.MarkPlayed -> progressActions?.onMarkPlayed(item)
                     ItemAction.MarkUnplayed -> progressActions?.onMarkUnplayed(item)

@@ -80,6 +80,23 @@ class AudioSourceMappingTest {
     }
 
     @Test
+    fun `the source keeps its pause capability`() {
+        assertFalse(source().canPlayPause)
+        val pausable = sourceJson.replace("\"can_play_pause\": false", "\"can_play_pause\": true")
+        assertTrue(
+            assertIs<AudioSource>(factory.create(myJson.decodeFromString<ServerMediaItem>(pausable))).canPlayPause,
+        )
+    }
+
+    @Test
+    fun `a source without the flag cannot pause`() {
+        val legacy = sourceJson.replace("\"can_play_pause\": false,", "")
+        assertFalse(
+            assertIs<AudioSource>(factory.create(myJson.decodeFromString<ServerMediaItem>(legacy))).canPlayPause,
+        )
+    }
+
+    @Test
     fun `the source cannot be favorited`() {
         assertFalse(source().canBeFavorited)
     }
@@ -88,10 +105,13 @@ class AudioSourceMappingTest {
     fun `the long-press menu offers play now only`() {
         val actions = resolveLongClickActions(
             item = source(),
+            canEditLibrary = true,
+            dislikeSupported = true,
             librarySupported = true,
             canAddToPlaylist = false,
             canRemoveFromPlaylist = false,
             progressSupported = false,
+            playMediaSupport = PlayMediaSupport(shuffle = true, startFromBeginning = true),
             customizationAllowed = true,
         )
 

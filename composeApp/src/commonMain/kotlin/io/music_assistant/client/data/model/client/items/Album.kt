@@ -23,6 +23,7 @@ data class Album(
     val albumType: AlbumType? = null,
     val externalIds: List<List<String>> = emptyList(),
 ) : AppMediaItem() {
+    override fun withFavorite(favorite: Boolean?) = copy(favorite = favorite)
     override val mediaType: MediaType = MediaType.ALBUM
     override val canStartEndlessMix: Boolean = true
     override val displayName =

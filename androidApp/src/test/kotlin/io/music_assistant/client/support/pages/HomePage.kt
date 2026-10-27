@@ -1,79 +1,80 @@
 package io.music_assistant.client.support.pages
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDisplayed
 import androidx.compose.ui.test.junit4.ComposeTestRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import io.music_assistant.client.data.model.server.ServerMediaItem
+import io.music_assistant.client.support.get
+import io.music_assistant.client.ui.compose.ScreenSemantics
+import io.music_assistant.client.ui.compose.home.HomeScreenSemantics
+import musicassistantclient.composeapp.generated.resources.Res
+import musicassistantclient.composeapp.generated.resources.discover_edit_rows
+import musicassistantclient.composeapp.generated.resources.discover_save_rows
+import musicassistantclient.composeapp.generated.resources.library_error
+import musicassistantclient.composeapp.generated.resources.nav_discover
+import musicassistantclient.composeapp.generated.resources.nav_search
+
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onAllNodesWithTag
-import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performScrollToNode
-import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.printToString
-import io.music_assistant.client.data.model.server.ServerMediaItem
-import io.music_assistant.client.support.get
-import io.music_assistant.client.ui.compose.home.HomeScreenSemantics
-import musicassistantclient.composeapp.generated.resources.Res
-import musicassistantclient.composeapp.generated.resources.home_edit_rows
-import musicassistantclient.composeapp.generated.resources.home_save_rows
-import musicassistantclient.composeapp.generated.resources.library_error
 import musicassistantclient.composeapp.generated.resources.cd_album_item
-import musicassistantclient.composeapp.generated.resources.nav_home
 import musicassistantclient.composeapp.generated.resources.nav_library
-import musicassistantclient.composeapp.generated.resources.nav_search
 import musicassistantclient.composeapp.generated.resources.nav_settings
 
 class HomePage(composeTestRule: ComposeTestRule) : ComposePage(composeTestRule) {
     override fun assert() {
-        composeTestRule.onNodeWithContentDescription(Res.string.nav_home.get()).assertIsDisplayed()
+        composeTestRule
+            .onNode(hasTestTag(ScreenSemantics.TITLE_TAG))
+            .assertIsDisplayed()
+
         assertNavBar(
             items = listOf(
-                Res.string.nav_home.get(),
-                Res.string.nav_library.get(),
+                Res.string.nav_discover.get(),
                 Res.string.nav_search.get(),
-                Res.string.nav_settings.get(),
             ),
-            selected = Res.string.nav_home.get(),
+            selected = Res.string.nav_discover.get(),
         )
     }
 
     fun clickOnMedia(item: ServerMediaItem, withinTag: String? = null): ItemPage {
-        return clickOnMedia(item, Res.string.nav_home.get(), withinTag)
+        return clickOnMedia(item, Res.string.nav_discover.get(), withinTag)
     }
 
     fun refresh(): HomePage {
-        // Recommendation assertions can scroll the collapsing toolbar out of view.
-        if (composeTestRule.onAllNodesWithTag(HomeScreenSemantics.LIST_TAG).fetchSemanticsNodes().isNotEmpty()) {
-            composeTestRule.onNodeWithTag(HomeScreenSemantics.LIST_TAG).performScrollToIndex(0)
-            composeTestRule.onNodeWithTag(HomeScreenSemantics.LIST_TAG).performTouchInput { swipeDown() }
-        }
+        // Re-tapping Discover restores the scrolled header before the real refresh tap.
+        composeTestRule.onNodeWithContentDescription(Res.string.nav_discover.get()).performClick()
         composeTestRule.waitForIdle()
-        composeTestRule.onNodeWithContentDescription("Refresh").assertIsDisplayed().performClick()
+        composeTestRule.onNodeWithContentDescription("Refresh").performClick()
         return this
     }
 
     fun editRows(): HomePage {
-        composeTestRule.onNodeWithContentDescription(Res.string.home_edit_rows.get()).performClick()
+        composeTestRule.onNodeWithContentDescription(Res.string.discover_edit_rows.get()).performClick()
         return this
     }
 
     fun saveRows(): HomePage {
-        composeTestRule.onNodeWithContentDescription(Res.string.home_save_rows.get()).performClick()
+        composeTestRule.onNodeWithContentDescription(Res.string.discover_save_rows.get()).performClick()
         return this
     }
 
     fun clickOnShortcut(item: ServerMediaItem): ItemPage {
         return clickOnMedia(
             item,
-            Res.string.nav_home.get(),
+            Res.string.nav_discover.get(),
             withinTag = HomeScreenSemantics.SHORTCUTS_ROW_TAG,
         )
     }
@@ -99,14 +100,14 @@ class HomePage(composeTestRule: ComposeTestRule) : ComposePage(composeTestRule) 
                 composeTestRule.onNodeWithTag(HomeScreenSemantics.LIST_TAG).performScrollToNode(album and hasAnyAncestor(row))
                 composeTestRule.onNode(album and hasAnyAncestor(row)).isDisplayed()
             }.onFailure { lastError = it }.getOrDefault(false)
-        } } catch (e: Exception) {
+        } } catch (e: Throwable) {
             throw AssertionError("${lastError?.message}\n${composeTestRule.onRoot().printToString()}", e)
         }
         return this
     }
 
     fun assertErrorLoadingData(): HomePage {
-        composeTestRule.waitUntil {
+        composeTestRule.waitUntil("library error is displayed") {
             composeTestRule.onNodeWithText(Res.string.library_error.get()).isDisplayed()
         }
         return this

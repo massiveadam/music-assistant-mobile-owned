@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.plus
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -22,7 +23,10 @@ import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.Scaffold
@@ -34,6 +38,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -52,7 +57,6 @@ import io.music_assistant.client.data.model.client.ClickContext
 import io.music_assistant.client.data.model.client.ImageType
 import io.music_assistant.client.data.model.client.MediaType
 import io.music_assistant.client.data.model.client.ProviderDetails
-import io.music_assistant.client.data.model.client.QueueOption
 import io.music_assistant.client.data.model.client.SortField
 import io.music_assistant.client.data.model.client.SortOption
 import io.music_assistant.client.data.model.client.SubItemContext
@@ -67,10 +71,13 @@ import io.music_assistant.client.data.model.client.items.Playlist
 import io.music_assistant.client.data.model.client.items.Podcast
 import io.music_assistant.client.data.model.client.items.PodcastEpisode
 import io.music_assistant.client.data.model.client.items.RadioStation
+import io.music_assistant.client.data.model.client.items.RefreshItemAction
 import io.music_assistant.client.data.model.client.items.Track
+import io.music_assistant.client.data.model.client.resumeChapter
 import io.music_assistant.client.data.model.client.stringResource
 import io.music_assistant.client.data.model.client.toClickContext
 import io.music_assistant.client.data.model.server.ServerMediaItem
+import io.music_assistant.client.data.play.PlayMode
 import io.music_assistant.client.settings.ViewMode
 import io.music_assistant.client.ui.compose.common.CenteredProgress
 import io.music_assistant.client.ui.compose.common.CenteredText
@@ -104,6 +111,7 @@ import io.music_assistant.client.ui.compose.common.rememberExtractedColorsSource
 import io.music_assistant.client.ui.compose.common.toDisplayString
 import io.music_assistant.client.ui.compose.common.viewmodel.ActionsViewModel
 import io.music_assistant.client.ui.compose.grid.gridItemMinSize
+import io.music_assistant.client.ui.compose.home.players.LyricsSheet
 import io.music_assistant.client.ui.compose.item.artist.ArtistDetailsViewModel
 import io.music_assistant.client.ui.compose.item.artist.ArtistDetailsViewModel.Section
 import io.music_assistant.client.ui.compose.nav.TopBarLayout
@@ -116,9 +124,12 @@ import musicassistantclient.composeapp.generated.resources.artist_section_all
 import musicassistantclient.composeapp.generated.resources.artist_section_in_library
 import musicassistantclient.composeapp.generated.resources.artist_section_top
 import musicassistantclient.composeapp.generated.resources.artist_source_all
+import musicassistantclient.composeapp.generated.resources.cd_in_progress
 import musicassistantclient.composeapp.generated.resources.cd_provider_filter
 import musicassistantclient.composeapp.generated.resources.item_error
 import musicassistantclient.composeapp.generated.resources.item_no_data
+import musicassistantclient.composeapp.generated.resources.item_tab_similar_tracks
+import musicassistantclient.composeapp.generated.resources.item_tab_versions
 import musicassistantclient.composeapp.generated.resources.library_empty
 import musicassistantclient.composeapp.generated.resources.library_error
 import musicassistantclient.composeapp.generated.resources.media_type_audiobooks
@@ -142,6 +153,7 @@ fun ItemDetailsScreen(
     contentPadding: PaddingValues,
 ) {
     val state by itemDetailsViewModel.state.collectAsStateWithLifecycle()
+    val refreshAction by itemDetailsViewModel.refreshAction.collectAsStateWithLifecycle()
 
     ItemDetails(
         contentPadding = contentPadding,
@@ -157,7 +169,7 @@ fun ItemDetailsScreen(
         createPlaylist = actionsViewModel::createPlaylist,
         addToPlaylist = actionsViewModel::addToPlaylist,
         onLibraryClick = actionsViewModel::onLibraryClick,
-        onFavoriteClick = actionsViewModel::onFavoriteClick,
+        onFavoriteChange = actionsViewModel::onFavoriteChange,
         onMarkPlayed = actionsViewModel::onMarkPlayed,
         onMarkUnplayed = actionsViewModel::onMarkUnplayed,
         onRemoveFromPlaylist = { id, position ->
@@ -172,6 +184,8 @@ fun ItemDetailsScreen(
         onTabSelected = itemDetailsViewModel::onTabSelected,
         onLoadSimilarArtists = itemDetailsViewModel::loadSimilarArtists,
         onRefreshPlaylist = itemDetailsViewModel::refreshPlaylistTracks,
+        refreshAction = refreshAction,
+        onRefreshItem = itemDetailsViewModel::refreshItem,
         providerDetails = providerViewModel::getProviderDetails,
     )
 }
@@ -190,19 +204,21 @@ fun ItemDetails(
     createPlaylist: suspend (String) -> Playlist? = { null },
     addToPlaylist: (String?, Playlist) -> Unit = { _, _ -> },
     onLibraryClick: (AppMediaItem) -> Unit = {},
-    onFavoriteClick: (AppMediaItem) -> Unit = {},
+    onFavoriteChange: (AppMediaItem, Boolean?) -> Unit = { _, _ -> },
     onMarkPlayed: (AppMediaItem) -> Unit = {},
     onMarkUnplayed: (AppMediaItem) -> Unit = {},
     onRemoveFromPlaylist: (String, Int) -> Unit = { _, _ -> },
     providerIconFetcher: ProviderIconFetcher = { _, _, _ -> },
-    onPlayClick: (QueueOption, Boolean) -> Unit = { _, _ -> },
+    onPlayClick: (PlayMode) -> Unit = {},
     onChapterClick: (Int) -> Unit = {},
-    onChildPlayClick: PlayHandler<AppMediaItem> = { _, _, _, _ -> },
+    onChildPlayClick: PlayHandler<AppMediaItem> = { _, _ -> },
     onPlayableItemsSortChanged: (SubItemContext, SortOption) -> Unit = { _, _ -> },
     onPlayableItemsQueryChanged: (String?) -> Unit = {},
     onTabSelected: (ItemDetailsTab) -> Unit = {},
     onLoadSimilarArtists: () -> Unit = {},
     onRefreshPlaylist: () -> Unit = {},
+    refreshAction: RefreshItemAction? = null,
+    onRefreshItem: () -> Unit = {},
     providerDetails: (String) -> ProviderDetails? = { null },
 ) {
     val playlistActions = object : PlaylistActions {
@@ -226,8 +242,8 @@ fun ItemDetails(
             onLibraryClick(item)
         }
 
-        override fun onFavoriteClick(item: AppMediaItem) {
-            onFavoriteClick(item)
+        override fun onFavoriteChange(item: AppMediaItem, favorite: Boolean?) {
+            onFavoriteChange(item, favorite)
         }
     }
 
@@ -269,6 +285,7 @@ fun ItemDetails(
                             is Audiobook,
                             is MediaCollection,
                             is Genre,
+                            is Track,
                                 -> {
                                 onNavigateToItem(item.itemId, item.mediaType, item.provider)
                             }
@@ -295,6 +312,8 @@ fun ItemDetails(
                     onTabSelected = onTabSelected,
                     onLoadSimilarArtists = onLoadSimilarArtists,
                     onRefreshPlaylist = onRefreshPlaylist,
+                    refreshAction = refreshAction,
+                    onRefreshItem = onRefreshItem,
                     providerDetails = providerDetails,
                 )
             }
@@ -309,6 +328,8 @@ private fun ItemDetailsTab.stringResource(): StringResource? = when (this) {
     ItemDetailsTab.AUDIOBOOK_CHAPTERS -> Res.string.media_type_chapters
     ItemDetailsTab.PODCAST_EPISODES -> Res.string.media_type_episodes
     ItemDetailsTab.COLLECTION_ITEMS -> Res.string.media_type_audiobooks
+    ItemDetailsTab.TRACK_VERSIONS -> Res.string.item_tab_versions
+    ItemDetailsTab.SIMILAR_TRACKS -> Res.string.item_tab_similar_tracks
     else -> viewMediaType?.stringResource()
 }
 
@@ -318,7 +339,7 @@ private fun ItemContent(
     state: ItemDetailsViewModel.State,
     onNavigateClick: (AppMediaItem) -> Unit,
     onNavigateToList: (String, ItemList, ClickContext) -> Unit,
-    onPlayItemClick: (QueueOption, Boolean) -> Unit,
+    onPlayItemClick: (PlayMode) -> Unit,
     onPlayChildClick: PlayHandler<AppMediaItem>,
     onChapterClick: (Int) -> Unit,
     playlistActions: PlaylistActions,
@@ -336,6 +357,8 @@ private fun ItemContent(
     onTabSelected: (ItemDetailsTab) -> Unit,
     onLoadSimilarArtists: () -> Unit,
     onRefreshPlaylist: () -> Unit,
+    refreshAction: RefreshItemAction?,
+    onRefreshItem: () -> Unit,
     providerDetails: (String) -> ProviderDetails?,
 ) {
     // Tabs, the loading gate, and the selected tab are all derived in ItemDetailsViewModel.State.
@@ -348,6 +371,7 @@ private fun ItemContent(
     LaunchedEffect(showSimilarArtists) {
         if (showSimilarArtists) onLoadSimilarArtists()
     }
+    var showLyrics by rememberSaveable { mutableStateOf(false) }
 
     // Artwork-driven header colors. Library items carry no server palette, so colors are
     // extracted locally from the thumbnail (cached by DominantColorViewModel) — same path
@@ -369,12 +393,14 @@ private fun ItemContent(
         enabled = rememberDynamicColorsEnabled(),
     )
 
+    var showAlbumCredits by rememberSaveable(item.uri) { mutableStateOf(false) }
     val heroSlot: @Composable () -> Unit = {
         AnimatedVisibility(
             visible = state.playableItemsQuery == null,
             enter = expandVertically(),
             exit = shrinkVertically(),
         ) {
+            Column(Modifier.fillMaxWidth()) {
             ProvideClickActions(ClickContext.DETAIL) {
                 ItemHeader(
                     item = item,
@@ -383,6 +409,23 @@ private fun ItemContent(
                     onPlayClick = onPlayItemClick,
                     navigateToItem = onNavigateClick,
                 )
+            }
+            if (item is Album && !LocalInspectionMode.current) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    io.music_assistant.client.ui.compose.personal.AlbumCollectionControls(
+                        item, onCreditsClick = { showAlbumCredits = !showAlbumCredits },
+                    )
+                    io.music_assistant.client.ui.compose.personal.AlbumCreditsPanel(
+                        item,
+                        expanded = showAlbumCredits,
+                        onExpandedChange = { showAlbumCredits = it },
+                        onNavigateToAlbum = { itemId, provider ->
+                            onNavigateClick(Album(itemId, provider, "Album", null, null, null, uri = null,
+                                images = emptyMap(), version = null, year = null, artists = emptyList()))
+                        },
+                    )
+                }
+            }
             }
         }
     }
@@ -397,9 +440,13 @@ private fun ItemContent(
                 playlistActions = playlistActions.takeIf { item.supportsAddToPlaylist },
                 navigateToItem = onNavigateClick,
                 onSimilarArtistsClick = { showSimilarArtists = true },
+                onLyricsClick = state.lyrics?.let { { showLyrics = true } },
                 // force_refresh is a playlist-tracks-only server argument, so no other
                 // media type gets the action.
                 onRefresh = onRefreshPlaylist.takeIf { item is Playlist },
+                refreshAction = refreshAction,
+                refreshingItem = state.refreshingItem,
+                onRefreshItem = onRefreshItem,
                 query = state.playableItemsQuery,
                 onQueryChanged = onPlayableItemsQueryChanged.takeIf {
                     item is Album || item is Playlist || item is Podcast
@@ -497,6 +544,10 @@ private fun ItemContent(
             libraryActions = libraryActions,
             onDismiss = { showSimilarArtists = false },
         )
+    }
+
+    state.lyrics?.takeIf { showLyrics }?.let { lyrics ->
+        LyricsSheet(lyrics = lyrics, livePositionFlow = null, onDismiss = { showLyrics = false })
     }
 }
 
@@ -608,7 +659,9 @@ private fun TabContent(
     gridState: LazyGridState,
 ) {
     when (tab) {
-        ItemDetailsTab.GENRE_ALBUMS -> AlbumsTabContent(
+        ItemDetailsTab.GENRE_ALBUMS,
+        ItemDetailsTab.TRACK_ALBUMS,
+            -> AlbumsTabContent(
             albumsState = state.albumsState,
             parentItem = item,
             viewModeProvider = viewModeProvider,
@@ -646,6 +699,31 @@ private fun TabContent(
             gridState = gridState,
         )
 
+        ItemDetailsTab.TRACK_VERSIONS,
+        ItemDetailsTab.SIMILAR_TRACKS,
+            -> PlayablesTabContent(
+            playableItemsState = if (tab == ItemDetailsTab.TRACK_VERSIONS) {
+                state.trackVersionsState
+            } else {
+                state.similarTracksState
+            },
+            parentItem = item,
+            playableItemsSortOption = null,
+            playableItemsQuery = null,
+            viewModeProvider = viewModeProvider,
+            onNavigateClick = onNavigateClick,
+            onPlayChildClick = onPlayChildClick,
+            playlistActions = playlistActions,
+            progressActions = progressActions,
+            onRemoveFromPlaylist = onRemoveFromPlaylist,
+            libraryActions = libraryActions,
+            providerIconFetcher = providerIconFetcher,
+            contentPadding = contentPadding,
+            heroSlot = heroSlot,
+            tabsSlot = tabsSlot,
+            gridState = gridState,
+        )
+
         ItemDetailsTab.GENRE_ARTISTS -> ArtistsTabContent(
             artistsState = state.artistsState,
             viewModeProvider = viewModeProvider,
@@ -661,6 +739,7 @@ private fun TabContent(
 
         ItemDetailsTab.AUDIOBOOK_CHAPTERS -> ChaptersTabContent(
             chapters = (item as? Audiobook)?.chapters.orEmpty(),
+            resumeChapterPosition = (item as? Audiobook)?.resumeChapter()?.position,
             onChapterClick = onChapterClick,
             contentPadding = contentPadding,
             heroSlot = heroSlot,
@@ -736,26 +815,28 @@ private inline fun <T> LazyGridScope.tabListBody(
     emptyText: StringResource = Res.string.library_empty,
     crossinline items: LazyGridScope.(List<T>) -> Unit,
 ) {
-    val data = when (state) {
-        is DataState.Data -> state.data
-        is DataState.Stale -> state.data
-        is DataState.Error -> {
-            fullSpanItem(DETAIL_ERROR_KEY) {
-                CenteredText(
-                    text = stringResource(Res.string.library_error),
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
-            return
+    if (state is DataState.Error) {
+        fullSpanItem(DETAIL_ERROR_KEY) {
+            CenteredText(
+                text = stringResource(Res.string.library_error),
+                color = MaterialTheme.colorScheme.error,
+            )
         }
-
-        else -> emptyList()
+        return
     }
+    val data = state.tabRows()
     if (data.isEmpty()) {
         fullSpanItem(DETAIL_EMPTY_KEY) { CenteredText(stringResource(emptyText)) }
     } else {
         items(data)
     }
+}
+
+/** The rows that [tabListBody] passes to its content: empty for every state without data. */
+private fun <T> DataState<List<T>>.tabRows(): List<T> = when (this) {
+    is DataState.Data -> data
+    is DataState.Stale -> data
+    else -> emptyList()
 }
 
 @Composable
@@ -774,10 +855,11 @@ private fun AlbumsTabContent(
     gridState: LazyGridState,
 ) {
     val viewMode = viewModeProvider(MediaType.ALBUM)
+    // Built here because the grid content below is not a @Composable scope.
+    val albumRows = albumsState.tabRows()
+    val albumKeys = remember(albumRows) { albumRows.lazyListOccurrenceKeys() }
     DetailGrid(contentPadding, heroSlot, tabsSlot, gridState) {
         tabListBody(albumsState) { albums ->
-            // not a @Composable scope, so remember() is unavailable here
-            val albumKeys = albums.lazyListOccurrenceKeys()
             itemsIndexed(
                 items = albums,
                 key = { index, _ -> albumKeys[index] },
@@ -816,9 +898,10 @@ private fun ArtistsTabContent(
     gridState: LazyGridState,
 ) {
     val viewMode = viewModeProvider(MediaType.ARTIST)
+    val artistRows = artistsState.tabRows()
+    val artistKeys = remember(artistRows) { artistRows.lazyListOccurrenceKeys() }
     DetailGrid(contentPadding, heroSlot, tabsSlot, gridState) {
         tabListBody(artistsState) { artists ->
-            val artistKeys = artists.lazyListOccurrenceKeys()
             itemsIndexed(
                 items = artists,
                 key = { index, _ -> artistKeys[index] },
@@ -923,16 +1006,19 @@ private fun PlayablesTabContent(
     } else {
         Res.string.search_no_results
     }
+    val trackRows = playableItemsState.tabRows()
+    val trackKeys = remember(trackRows) { trackRows.playableLazyListOccurrenceKeys() }
+    // Section a multi-disc album by disc, but only in its natural ("Original") order —
+    // any other sort intentionally mixes discs, so headers would lie. Requiring every
+    // track to carry a disc number avoids a bogus "Disc null" header on partial tags.
+    val isOriginalOrder = playableItemsSortOption?.field == SortField.ORIGINAL
+    val sectionByDisc = remember(trackRows, parentItem is Album, isOriginalOrder) {
+        parentItem is Album && isOriginalOrder &&
+                trackRows.all { it is Track && it.discNumber != null } &&
+                trackRows.mapNotNull { (it as? Track)?.discNumber }.distinct().size > 1
+    }
     DetailGrid(contentPadding, heroSlot, tabsSlot, gridState) {
         tabListBody(playableItemsState, emptyText) { tracks ->
-            val trackKeys = tracks.playableLazyListOccurrenceKeys()
-            // Section a multi-disc album by disc, but only in its natural ("Original") order —
-            // any other sort intentionally mixes discs, so headers would lie. Requiring every
-            // track to carry a disc number avoids a bogus "Disc null" header on partial tags.
-            val sectionByDisc = parentItem is Album &&
-                    playableItemsSortOption?.field == SortField.ORIGINAL &&
-                    tracks.all { it is Track && it.discNumber != null } &&
-                    tracks.mapNotNull { (it as? Track)?.discNumber }.distinct().size > 1
             if (sectionByDisc) {
                 tracks.forEachIndexed { index, track ->
                     // Gate guarantees a non-null disc; Original sort keeps discs contiguous.
@@ -1087,6 +1173,7 @@ private fun <T : AppMediaItem> SectionRow(
 @Composable
 private fun ChaptersTabContent(
     chapters: List<Chapter>,
+    resumeChapterPosition: Int?,
     onChapterClick: (Int) -> Unit,
     contentPadding: PaddingValues,
     heroSlot: @Composable () -> Unit,
@@ -1101,6 +1188,7 @@ private fun ChaptersTabContent(
                 fullSpanItem(DETAIL_CHAPTER_KEY_PREFIX + chapter.position) {
                     ChapterRow(
                         chapter = chapter,
+                        isResumePoint = chapter.position == resumeChapterPosition,
                         onClick = { onChapterClick(chapter.position) },
                     )
                 }
@@ -1122,6 +1210,7 @@ private fun InlineProgress() {
 @Composable
 private fun ChapterRow(
     chapter: Chapter,
+    isResumePoint: Boolean,
     onClick: () -> Unit,
 ) {
     Row(
@@ -1132,9 +1221,19 @@ private fun ChapterRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
+        if (isResumePoint) {
+            Icon(
+                imageVector = Icons.Default.Schedule,
+                contentDescription = stringResource(Res.string.cd_in_progress),
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(end = 8.dp).size(18.dp),
+            )
+        }
         Text(
             text = chapter.name,
             style = MaterialTheme.typography.bodyLarge,
+            color = if (isResumePoint) MaterialTheme.colorScheme.primary else Color.Unspecified,
+            fontWeight = if (isResumePoint) FontWeight.Bold else null,
             modifier = Modifier.weight(1f),
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,

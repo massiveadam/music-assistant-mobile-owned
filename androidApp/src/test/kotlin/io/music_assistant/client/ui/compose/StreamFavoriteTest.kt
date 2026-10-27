@@ -32,7 +32,7 @@ class StreamFavoriteTest {
     @Test
     fun `on air song outranks the URI backed station`() {
         val player = radioStreamPlayer("Artist - Song")
-        assertTrue(player.hasFavoritableStreamTrack())
+        assertTrue(player.hasFavoritableStreamTrack(), "fixture has no favoritable stream track")
         show(player, supported = true)
         clickHeart()
         assertEquals(1, streamClicks)
@@ -66,7 +66,7 @@ class StreamFavoriteTest {
                 item = player,
                 colors = PlayerColors(Color.Gray, Color.White),
                 playerAction = { _, _ -> },
-                onFavoriteClick = { stationClicks++ },
+                onFavoriteChange = { _, _ -> stationClicks++ },
                 onFavoriteStreamClick = { streamClicks++ },
                 canFavoriteStream = supported && player.hasFavoritableStreamTrack(),
                 livePositionFlow = null,

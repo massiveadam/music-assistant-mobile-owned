@@ -46,6 +46,11 @@ data class MediaNotificationData(
     val elapsedUpdateTimeMs: Long?,
     val playerName: String?,
     val duration: Long?,
+    // Name of the current radio queue item. This remains stable while the server's
+    // currentMedia title and artist change with the song currently on air.
+    val stationName: String? = null,
+    // A radio stream cannot seek, not even in a song whose length it reports.
+    val isSeekable: Boolean = true,
 ) {
     companion object {
         /**
@@ -65,12 +70,16 @@ data class MediaNotificationData(
             multiplePlayers: Boolean,
             effectiveElapsedSec: Double?,
             currentChapter: ResolvedChapter? = null,
+            // `library.write`: without it neither favorite slot is offered.
+            canEditLibrary: Boolean,
             // Real on-air stream song AND the connected server can resolve it — see
             // MainDataSource.canFavoriteCurrentlyPlaying, the single source for this.
             isFavoritableStream: Boolean = false,
         ) = run {
-            val currentTrack = playerData.queueInfo?.currentItem?.track as? AppMediaItem
+            val streamFavorite = canEditLibrary && isFavoritableStream
             val longItemId = playerData.player.currentMedia?.queueItemId?.let(::sessionQueueItemId)
+            val currentQueueTrack = playerData.queueInfo?.currentItem?.track
+            val currentTrack = currentQueueTrack as? AppMediaItem
             MediaNotificationData(
             multiplePlayers = multiplePlayers,
             longItemId = longItemId,
@@ -87,13 +96,13 @@ data class MediaNotificationData(
             shuffleEnabled = playerData.queueInfo?.shuffleEnabled
                 ?.takeIf { playerData.queueInfo?.isDynamicPlaylist != true },
             isLongFormContent = playerData.queueInfo?.currentItem?.track.isLongFormSpokenContent,
-            isFavoritableTrack = currentTrack
+            isFavoritableTrack = canEditLibrary && currentTrack
                 ?.let { it.mediaType == MediaType.TRACK && it.canBeFavorited } == true,
-            isFavoritableStream = isFavoritableStream,
+            isFavoritableStream = streamFavorite,
             // The station's own favorite flag would show a filled heart for an already-
             // favorited station even though nothing has been favorited for the on-air song,
             // so the stream case always renders un-filled.
-            isFavorite = currentTrack?.favorite == true && !isFavoritableStream,
+            isFavorite = currentTrack?.favorite == true && !streamFavorite,
             isPlaying = playerData.player.isPlaying,
             imageUrl = playerData.player.currentMedia?.imageUrl,
             chapterName = currentChapter?.displayName,
@@ -104,6 +113,11 @@ data class MediaNotificationData(
             playerName = playerData.player.nameAndSuffix.takeIf { !playerData.isLocal },
             duration = (currentChapter?.duration ?: playerData.player.currentMedia?.duration)
                 ?.toLong()?.let { it * 1000 },
+            stationName = currentQueueTrack
+                ?.takeIf { it.mediaType == MediaType.RADIO }
+                ?.displayName
+                ?.takeIf { it.isNotBlank() },
+            isSeekable = currentQueueTrack?.mediaType != MediaType.RADIO,
             )
         }
 

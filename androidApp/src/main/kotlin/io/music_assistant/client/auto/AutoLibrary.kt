@@ -29,14 +29,20 @@ import io.music_assistant.client.data.model.client.SortOption
 import io.music_assistant.client.data.model.client.SubItemContext
 import io.music_assistant.client.data.model.client.clientSorted
 import io.music_assistant.client.data.model.client.items.AppMediaItem
+import io.music_assistant.client.data.model.client.items.EpisodeNumberFormat
 import io.music_assistant.client.data.model.client.items.Genre
 import io.music_assistant.client.data.model.client.items.RecommendationFolder
+import io.music_assistant.client.data.model.client.items.isAiRadioShow
+import io.music_assistant.client.data.model.client.items.subtitleWith
 import io.music_assistant.client.data.model.client.toItemKind
+import io.music_assistant.client.data.model.server.ListSort
 import io.music_assistant.client.data.model.server.SearchResult
 import io.music_assistant.client.data.model.server.ServerMediaItem
+import io.music_assistant.client.data.model.server.aiRadioStationUri
 import io.music_assistant.client.data.planLocalPlayerDispatch
 import io.music_assistant.client.data.play.PlayDispatcher
 import io.music_assistant.client.data.repository.AiRadioRepository
+import io.music_assistant.client.data.repository.LibrarySortRepository
 import io.music_assistant.client.data.repository.MediaItemRepository
 import io.music_assistant.client.data.repository.fetchRecommendationFolders
 import io.music_assistant.client.settings.CarPlatform
@@ -83,6 +89,7 @@ class AutoLibrary(
     private val aiRadioRepository: AiRadioRepository,
     private val mediaItemRepository: MediaItemRepository,
     private val playDispatcher: PlayDispatcher,
+    private val librarySortRepository: LibrarySortRepository,
 ) {
     private val scope = CoroutineScope(Dispatchers.IO)
     private val searchFlow: MutableStateFlow<Pair<String, MediaBrowserServiceCompat.Result<List<MediaItem>>>?> =
@@ -108,9 +115,13 @@ class AutoLibrary(
     @Volatile
     private var localPlayerOffLabel: String = "Local player is not enabled"
 
+    @Volatile
+    private var episodeNumbers: EpisodeNumberFormat = EpisodeNumberFormat.SOURCE
+
     init {
         scope.launch {
             localPlayerOffLabel = getString(Res.string.media_error_local_player_off)
+            episodeNumbers = EpisodeNumberFormat.load()
         }
         scope.launch {
             searchFlow
@@ -133,7 +144,7 @@ class AutoLibrary(
                         ),
                     )
                     answer.resultAs<SearchResult>()?.let {
-                        result.sendResult(it.toAutoMediaItems(mediaItemFactory, defaultIconUri))
+                        result.sendResult(it.toAutoMediaItems(mediaItemFactory, defaultIconUri, episodeNumbers))
                     } ?: result.sendResult(null)
                 }
         }
@@ -207,9 +218,9 @@ class AutoLibrary(
     }
 
     /**
-     * Stations of the optional `ai_radio` plugin, as playable rows. They carry no URI, so
-     * [play] routes them by their id prefix instead of through the normal queue dispatch, and
-     * no artwork, so each row borrows the cover of the playlist its station plays from.
+     * Stations of the optional `ai_radio` plugin, as playable rows. Their media id carries the
+     * station id, so [play] routes them by their id prefix. A station has no artwork of its
+     * own, so each row borrows the cover of the playlist its station plays from.
      */
     private fun handleAiRadioStations(result: MediaBrowserServiceCompat.Result<List<MediaItem>>) {
         if (!mainDataSource.aiRadioAvailable.value) {
@@ -287,7 +298,7 @@ class AutoLibrary(
     private fun homeRowChildren(folder: RecommendationFolder): List<MediaItem> =
         folder.items.orEmpty()
             .filter { it.isHomeRowItem() && it !is Genre && it.isPlayable }
-            .map { it.toAutoMediaItem(allowBrowse = true, defaultIconUri) }
+            .map { it.toAutoMediaItem(allowBrowse = true, defaultIconUri, episodeNumbers) }
 
     // Populates AA's "For You" surface. Without this, AA scrapes the top of the
     // browse tree to derive its own suggestions. We serve favourite tracks ordered
@@ -409,24 +420,24 @@ class AutoLibrary(
         sort: SortOption,
         favoritesOnly: Boolean,
     ): List<MediaItem>? {
-        val orderBy = sort.toServerString()
+        val listSort = listSort(mediaType, sort)
         val favorite = favoritesOnly.takeIf { it }
         val request = when (mediaType) {
-            MediaType.ARTIST -> Request.Artist.listLibrary(orderBy = orderBy, favorite = favorite)
-            MediaType.ALBUM -> Request.Album.listLibrary(orderBy = orderBy, favorite = favorite)
+            MediaType.ARTIST -> Request.Artist.listLibrary(sort = listSort, favorite = favorite)
+            MediaType.ALBUM -> Request.Album.listLibrary(sort = listSort, favorite = favorite)
             MediaType.PLAYLIST -> Request.Playlist.listLibrary(
-                orderBy = orderBy,
+                sort = listSort,
                 favorite = favorite,
             )
 
-            MediaType.PODCAST -> Request.Podcast.listLibrary(orderBy = orderBy, favorite = favorite)
+            MediaType.PODCAST -> Request.Podcast.listLibrary(sort = listSort, favorite = favorite)
             MediaType.RADIO -> Request.RadioStation.listLibrary(
-                orderBy = orderBy,
+                sort = listSort,
                 favorite = favorite,
             )
 
             MediaType.AUDIOBOOK -> Request.Audiobook.listLibrary(
-                orderBy = orderBy,
+                sort = listSort,
                 favorite = favorite,
             )
 
@@ -435,9 +446,13 @@ class AutoLibrary(
         return request
             .fetchAllPages { apiClient.sendRequest(it).resultAs<List<ServerMediaItem>>() }
             ?.let { mediaItemFactory.createList(it) }
-            ?.filter { it.isPlayable }
-            ?.map { it.toAutoMediaItem(true, defaultIconUri) }
+            ?.filter { it.isPlayable && !it.isAiRadioShow }
+            ?.map { it.toAutoMediaItem(true, defaultIconUri, episodeNumbers) }
     }
+
+    /** [sort] in the form of the connected server, or the list default if the server does not offer it. */
+    private suspend fun listSort(mediaType: MediaType, sort: SortOption): ListSort =
+        librarySortRepository.menu(mediaType).let { it.sortFor(it.resolve(sort)) }
 
     private suspend fun loadSubItems(
         context: SubItemContext,
@@ -478,7 +493,7 @@ class AutoLibrary(
             context == SubItemContext.ALBUM_TRACKS || context == SubItemContext.PLAYLIST_ITEMS
         }
         return sorted.filter { it.isPlayable }
-            .map { it.toAutoMediaItem(true, defaultIconUri, parentUri = parentUri) }
+            .map { it.toAutoMediaItem(true, defaultIconUri, episodeNumbers, parentUri = parentUri) }
     }
 
     private fun actionsForItem(itemId: String, kind: ItemKind): List<MediaItem> =
@@ -504,6 +519,7 @@ class AutoLibrary(
         DefaultClickOption.INSERT_NEXT -> "Add all next"
         DefaultClickOption.ADD_TO_QUEUE -> "Add all to queue"
         DefaultClickOption.START_ENDLESS_MIX -> "Start endless mix"
+        DefaultClickOption.PLAY_SHUFFLED -> "Play all shuffled"
         else -> throw IllegalArgumentException("$name not supported by Android Auto!")
     }
 
@@ -514,6 +530,7 @@ class AutoLibrary(
         DefaultClickOption.INSERT_NEXT, DefaultClickOption.ADD_TO_QUEUE ->
             android.R.drawable.ic_menu_add
         DefaultClickOption.START_ENDLESS_MIX -> android.R.drawable.ic_menu_compass
+        DefaultClickOption.PLAY_SHUFFLED -> R.drawable.baseline_shuffle_24
         else -> throw IllegalArgumentException("$name not supported by Android Auto!")
     }
 
@@ -805,9 +822,10 @@ class AutoLibrary(
         }?.resultAs<List<ServerMediaItem>>()?.mapNotNull { it.uri }.orEmpty()
         androidAutoLog.i { "  → favorite tracks: ${favoriteUris.size}" }
         val pool = favoriteUris.ifEmpty {
-            androidAutoLog.i { "  → favorites empty, falling back to last_played_desc" }
-            sendLogged("Track.list orderBy=last_played_desc limit=$RANDOM_POOL_SIZE") {
-                Request.Track.list(orderBy = "last_played_desc", limit = RANDOM_POOL_SIZE)
+            androidAutoLog.i { "  → favorites empty, falling back to last played" }
+            val lastPlayed = listSort(MediaType.TRACK, SortOption(SortField.LAST_PLAYED, descending = true))
+            sendLogged("Track.list sort=last_played desc limit=$RANDOM_POOL_SIZE") {
+                Request.Track.list(sort = lastPlayed, limit = RANDOM_POOL_SIZE)
             }?.resultAs<List<ServerMediaItem>>()?.mapNotNull { it.uri }.orEmpty()
         }
         if (pool.isEmpty()) {
@@ -838,18 +856,10 @@ class AutoLibrary(
         }
     }
 
-    /**
-     * Starts an AI Radio station on the local Sendspin player. The server resolves the target
-     * through `players.get_player`, so it wants the player id and not a queue id.
-     */
-    private suspend fun startAiRadioOnLocalPlayer(stationId: String) {
-        val playerId = mainDataSource.localPlayer.value?.player?.id ?: run {
-            androidAutoLog.w { "AI Radio: no local player — ignoring station $stationId" }
-            return
-        }
-        androidAutoLog.i { "AI Radio: starting station=$stationId on player=$playerId" }
-        aiRadioRepository.start(stationId, playerId)
-            .onFailure { androidAutoLog.w(it) { "AI Radio: start failed for $stationId" } }
+    /** Plays an AI Radio show on the local Sendspin player. A show is a Radio item. */
+    private suspend fun playAiRadioOnLocalPlayer(stationId: String) {
+        androidAutoLog.i { "AI Radio: playing station=$stationId" }
+        dispatchToLocalPlayer(listOf(aiRadioStationUri(stationId)), QueueOption.REPLACE)
     }
 
     /**
@@ -862,6 +872,7 @@ class AutoLibrary(
         option: QueueOption,
         endlessMixMode: Boolean = false,
         startItem: String? = null,
+        shuffle: Boolean = false,
     ) {
         val player = mainDataSource.localPlayer.value?.player
         val plan = planLocalPlayerDispatch(
@@ -871,6 +882,7 @@ class AutoLibrary(
             option = option,
             endlessMixMode = endlessMixMode,
             startItem = startItem,
+            shuffle = shuffle,
         )
         if (plan == null) {
             androidAutoLog.w {
@@ -910,10 +922,10 @@ class AutoLibrary(
             androidAutoLog.w { "Local player disabled — ignoring play($id)." }
             return
         }
-        // AI Radio stations have no URI, so they must be routed before the ParentRef parse
-        // below would drop them on its `uri` lookup.
+        // AI Radio station rows carry the station id, not a URI, so they must be routed before
+        // the ParentRef parse below would drop them on its `uri` lookup.
         MediaIds.aiRadioStationOf(id)?.let { stationId ->
-            scope.launch { startAiRadioOnLocalPlayer(stationId) }
+            scope.launch { playAiRadioOnLocalPlayer(stationId) }
             return
         }
         val parts = id.split("__")
@@ -946,7 +958,9 @@ class AutoLibrary(
         }
 
         val dispatch = action.toCarDispatch()
-        scope.launch { dispatchToLocalPlayer(listOf(uri), dispatch.option, dispatch.endlessMixMode) }
+        scope.launch {
+            dispatchToLocalPlayer(listOf(uri), dispatch.option, dispatch.endlessMixMode, shuffle = dispatch.shuffle)
+        }
     }
 
     private fun rootTabItem(tabName: String, tabId: String): MediaItem =
@@ -1105,6 +1119,7 @@ internal data class ParentRef(
 private fun SearchResult.toAutoMediaItems(
     factory: MediaItemFactory,
     defaultIconUri: Uri,
+    episodeNumbers: EpisodeNumberFormat,
 ): List<MediaItem> = buildList {
     mapOf(
         tracks to "Tracks",
@@ -1113,7 +1128,7 @@ private fun SearchResult.toAutoMediaItems(
         playlists to "Playlists",
         radio to "Radio stations",
     ).forEach { (items, category) ->
-        addAll(items.mapNotNull { it.toAutoMediaItem(factory, true, defaultIconUri, category) })
+        addAll(items.mapNotNull { it.toAutoMediaItem(factory, true, defaultIconUri, episodeNumbers, category) })
     }
 }
 
@@ -1121,18 +1136,22 @@ private fun ServerMediaItem.toAutoMediaItem(
     factory: MediaItemFactory,
     allowBrowse: Boolean,
     defaultIconUri: Uri,
+    episodeNumbers: EpisodeNumberFormat,
     category: String? = null,
 ): MediaItem? =
-    factory.create(this)?.takeIf { it.isPlayable }?.toAutoMediaItem(allowBrowse, defaultIconUri, category)
+    factory.create(
+        this,
+    )?.takeIf { it.isPlayable }?.toAutoMediaItem(allowBrowse, defaultIconUri, episodeNumbers, category)
 
 private fun AppMediaItem.toAutoMediaItem(
     allowBrowse: Boolean,
     defaultIconUri: Uri,
+    episodeNumbers: EpisodeNumberFormat,
     category: String? = null,
     parentUri: String? = null,
 ): MediaItem {
     return MediaItem(
-        toMediaDescription(defaultIconUri, category, parentUri),
+        toMediaDescription(defaultIconUri, category, parentUri, episodeNumbers = episodeNumbers),
         if (allowBrowse && mediaType.isBrowsableInAuto()) {
             MediaItem.FLAG_BROWSABLE
         } else {
@@ -1160,11 +1179,12 @@ fun AppMediaItem.toMediaDescription(
     category: String? = null,
     parentUri: String? = null,
     artworkUri: (String) -> Uri? = AndroidAutoArtwork::uriFor,
+    episodeNumbers: EpisodeNumberFormat = EpisodeNumberFormat.SOURCE,
 ): MediaDescriptionCompat {
     return MediaDescriptionCompat.Builder()
         .setMediaId("${itemId}__${uri}__${mediaType}__$provider")
         .setTitle((if (favorite == true) "♥ " else "") + displayName)
-        .setSubtitle(subtitle)
+        .setSubtitle(subtitleWith(episodeNumbers))
         .setMediaUri(uri?.let { Uri.parse(it) })
         .setIconUri(
             image(ImageType.THUMB)?.url?.let(artworkUri)

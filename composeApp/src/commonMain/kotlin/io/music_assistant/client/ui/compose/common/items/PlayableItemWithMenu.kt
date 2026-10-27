@@ -15,7 +15,6 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
-import io.music_assistant.client.data.model.client.QueueOption
 import io.music_assistant.client.data.model.client.itemKind
 import io.music_assistant.client.data.model.client.items.AppMediaItem
 import io.music_assistant.client.data.model.client.items.AudioSource
@@ -23,8 +22,11 @@ import io.music_assistant.client.data.model.client.items.PlayableItem
 import io.music_assistant.client.data.model.client.items.PodcastEpisode
 import io.music_assistant.client.data.model.client.items.RadioStation
 import io.music_assistant.client.data.model.client.items.Track
+import io.music_assistant.client.data.play.PlayMode
 import io.music_assistant.client.settings.ViewMode
 import io.music_assistant.client.ui.compose.common.ConfirmationDialog
+import io.music_assistant.client.ui.compose.common.LocalDislikeSupported
+import io.music_assistant.client.ui.compose.common.LocalGrantedScopes
 import io.music_assistant.client.ui.compose.common.MenuItem
 import io.music_assistant.client.ui.compose.common.RemoveFromLibraryConfirmationDialog
 import io.music_assistant.client.ui.compose.common.providers.ProviderIconFetcher
@@ -34,7 +36,7 @@ import musicassistantclient.composeapp.generated.resources.dialog_remove_from_pl
 import musicassistantclient.composeapp.generated.resources.dialog_remove_from_playlist_title
 import org.jetbrains.compose.resources.stringResource
 
-typealias PlayHandler<T> = (item: T, queueOption: QueueOption, radio: Boolean, fromHereInParent: Boolean) -> Unit
+typealias PlayHandler<T> = (item: T, mode: PlayMode) -> Unit
 
 @Composable
 fun TrackWithMenu(
@@ -239,13 +241,28 @@ private fun <T> PlayableItemWithMenu(
     val clickActionConfig = LocalClickActionConfig.current
     val effectiveDefault = clickActionConfig.effectiveActionFor(item)
 
+    val actions = resolveLongClickActions(
+        item = item,
+        personalSaved = io.music_assistant.client.ui.compose.personal.personalFavorite(item),
+        clickContext = clickActionConfig.context,
+        canEditLibrary = LocalGrantedScopes.current.canEditLibrary,
+        dislikeSupported = LocalDislikeSupported.current,
+        librarySupported = true,
+        canAddToPlaylist = playlistActions != null && item.supportsAddToPlaylist,
+        canRemoveFromPlaylist = onRemoveFromPlaylist != null,
+        progressSupported = progressActions != null && item is PodcastEpisode,
+        playMediaSupport = clickActionConfig.playMediaSupport,
+        defaultAction = effectiveDefault,
+        customizationAllowed = true,
+    )
+
+    // Built outside the DropdownMenu so the multi-artist chooser dialog survives its dismissal.
+    val navOptions = navigateToItem
+        ?.let { item.navigationOptions(it, containerItem) }
+        ?: emptyList()
+
     val runPlayAction: (ItemAction) -> Unit = { action ->
-        when (action) {
-            is ItemAction.Play -> onPlayOption(item, action.queueOption, false, false)
-            ItemAction.StartEndlessMix -> onPlayOption(item, QueueOption.REPLACE, true, false)
-            is ItemAction.PlayFromHere -> onPlayOption(item, QueueOption.REPLACE, false, true)
-            else -> Unit
-        }
+        action.toPlayMode()?.let { onPlayOption(item, it) }
     }
 
     // Non-playable items keep the long-press menu (favorite, library, …) but can't be played:
@@ -258,55 +275,35 @@ private fun <T> PlayableItemWithMenu(
             { effectiveDefault?.let(runPlayAction) ?: run { expandedItemId = item.itemId } },
             { expandedItemId = item.itemId },
         )
+        DropdownMenu(
+            modifier = Modifier.semantics {
+                role = Role.DropdownList
+            },
+            expanded = expandedItemId == item.itemId,
+            onDismissRequest = { expandedItemId = null },
+        ) {
+            ItemActionMenuItems(clickActionConfig.context, actions, defaultAction = effectiveDefault) { action ->
+                expandedItemId = null
+                when (action) {
+                    is ItemAction.Play,
+                    ItemAction.StartEndlessMix,
+                    ItemAction.PlayFromHere,
+                    ItemAction.PlayShuffled,
+                    ItemAction.PlayFromBeginning,
+                    -> runPlayAction(action)
+                    ItemAction.AddToLibrary -> libraryActions.onLibraryClick(item)
+                    ItemAction.RemoveFromLibrary -> showRemoveConfirmation = true
 
-        if (expandedItemId == item.itemId) {
-            val actions = resolveLongClickActions(
-                item = item,
-                personalSaved = io.music_assistant.client.ui.compose.personal.personalFavorite(item),
-                clickContext = clickActionConfig.context,
-                librarySupported = true,
-                canAddToPlaylist = playlistActions != null && item.supportsAddToPlaylist,
-                canRemoveFromPlaylist = onRemoveFromPlaylist != null,
-                progressSupported = progressActions != null && item is PodcastEpisode,
-                defaultAction = effectiveDefault,
-                customizationAllowed = true,
-            )
+                    is ItemAction.SetFavorite -> libraryActions.onFavoriteChange(item, action.favorite)
 
-            // Built outside the DropdownMenu so the multi-artist chooser dialog survives its dismissal.
-            val navOptions = navigateToItem
-                ?.let { item.navigationOptions(it, containerItem) }
-                ?: emptyList()
-
-            DropdownMenu(
-                modifier = Modifier.semantics {
-                    role = Role.DropdownList
-                },
-                expanded = true,
-                onDismissRequest = { expandedItemId = null },
-            ) {
-                ItemActionMenuItems(clickActionConfig.context, actions, defaultAction = effectiveDefault) { action ->
-                    expandedItemId = null
-                    when (action) {
-                        is ItemAction.Play,
-                        ItemAction.StartEndlessMix,
-                        is ItemAction.PlayFromHere,
-                        -> runPlayAction(action)
-                        ItemAction.AddToLibrary -> libraryActions.onLibraryClick(item)
-                        ItemAction.RemoveFromLibrary -> showRemoveConfirmation = true
-
-                        ItemAction.Favorite,
-                        ItemAction.Unfavorite,
-                            -> libraryActions.onFavoriteClick(item)
-
-                        ItemAction.AddToPlaylist -> showPlaylistDialog = true
-                        ItemAction.RemoveFromPlaylist -> showRemovePlaylistConfirmation = true
-                        ItemAction.MarkPlayed -> progressActions?.onMarkPlayed(item)
-                        ItemAction.MarkUnplayed -> progressActions?.onMarkUnplayed(item)
-                        ItemAction.Customize -> showCustomizeDialog = true
-                    }
+                    ItemAction.AddToPlaylist -> showPlaylistDialog = true
+                    ItemAction.RemoveFromPlaylist -> showRemovePlaylistConfirmation = true
+                    ItemAction.MarkPlayed -> progressActions?.onMarkPlayed(item)
+                    ItemAction.MarkUnplayed -> progressActions?.onMarkUnplayed(item)
+                    ItemAction.Customize -> showCustomizeDialog = true
                 }
-                navOptions.forEach { it.MenuItem(onClose = { expandedItemId = null }) }
             }
+            navOptions.forEach { it.MenuItem(onClose = { expandedItemId = null }) }
         }
 
         if (showPlaylistDialog && playlistActions != null) {

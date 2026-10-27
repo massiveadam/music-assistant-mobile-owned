@@ -1,5 +1,24 @@
 # Mobile coverage
 
+## October 27 stable server, updated clients
+
+Android 0.16.0-owned/code37 includes official android-v0.16.0. Official navigation,
+PlayMode dispatch, search history/source controls and the upstream Sendspin changes
+replace the prior implementations. Home retains My music, Inbox, Album collections
+and Downloads shortcuts. Upstream's shared favorite/dislike writes are adapted to
+private saves rather than treating them as equivalent behavior.
+
+The previous 0.15 integration had left AlbumCollectionControls, AlbumCreditsPanel
+and PersonalSaveButton without detail-page call sites. Restored them in the new
+header while preserving upstream's animation, refresh, lyrics and navigation.
+
+Web stays on API65-compatible 2.17.334 with official detail update/debounce,
+Music Quiz refresh and waveform seeking backports. Native detail flows use the
+official view model, not the web composable; web-only Music Quiz and pointer-event
+fixes have no native equivalent. No server API or database migration is included.
+Verification and delivery evidence: ../../evidence/20261027-client-upgrade/README.md.
+
+
 ## October23 stable client refresh
 
 Android source includes official android-v0.15.0 and the standalone Sendspin module.

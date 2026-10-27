@@ -1,0 +1,278 @@
+name: Sendspin Library Release
+
+# Publishes io.github.music-assistant:sendspin-kmp to the GitHub Packages Maven
+# registry of this repository, pushes the tag sendspin-v<version>, creates the
+# GitHub Release, and opens the post-release version bump PR.
+#
+# Runs on a manual dispatch, or when a PR with the 'sendspin_release' label
+# merges into main. The version is sendspinVersion in gradle.properties, and
+# sendspin-kmp/CHANGELOG.md must have a filled "## <version>" section.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [ closed ]
+    branches: [ main ]
+
+permissions:
+  contents: write
+  packages: write
+  pull-requests: write
+
+concurrency:
+  group: sendspin-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    # macOS: the iOS klibs need the Kotlin/Native Apple toolchain.
+    runs-on: macos-26
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.merged == true &&
+       contains(github.event.pull_request.labels.*.name, 'sendspin_release'))
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION=$(grep -E '^sendspinVersion=' gradle.properties | cut -d= -f2)
+          echo "name=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=sendspin-v${VERSION}" >> "$GITHUB_OUTPUT"
+
+      # GitHub Packages refuses a second upload of a version, so stop before the build.
+      # A tag on this same commit means that an earlier run failed after the tag push:
+      # this run resumes it, and the later steps skip or repeat their work safely.
+      - name: Guard against duplicate tag
+        id: guard
+        run: |
+          git fetch --tags
+          TAG='${{ steps.version.outputs.tag }}'
+          RESUME=false
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            if [ "$(git rev-parse "${TAG}^{commit}")" = "$(git rev-parse HEAD)" ]; then
+              echo "::notice::Tag ${TAG} already points at this commit; this run resumes an earlier release."
+              RESUME=true
+            else
+              echo "::error::Tag ${TAG} already exists on another commit. Bump sendspinVersion in gradle.properties before releasing."
+              exit 1
+            fi
+          fi
+          echo "resume=${RESUME}" >> "$GITHUB_OUTPUT"
+          # Previous sendspin tag, so the PR list never counts from an app tag
+          PREV_TAG=$(git tag -l 'sendspin-v*' --sort=-v:refname | { grep -vxF "$TAG" || true; } | head -1)
+          echo "prev_tag=${PREV_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Extract the CHANGELOG section
+        run: |
+          awk -v v="## ${{ steps.version.outputs.name }}" '
+            $0 == v { found = 1; next }
+            found && /^## / { exit }
+            found { print }
+          ' sendspin-kmp/CHANGELOG.md > /tmp/changelog-section.md
+          if ! grep -q '[^[:space:]]' /tmp/changelog-section.md; then
+            echo "::error::sendspin-kmp/CHANGELOG.md has no filled '## ${{ steps.version.outputs.name }}' section."
+            exit 1
+          fi
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v6
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      # Read-only reuse of the caches that check-pr-ios.yml warms on main.
+      - name: Restore Gradle and Kotlin/Native caches
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ~/.konan
+          key: ios-simulator-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', 'gradle/libs.versions.toml') }}-publish
+          restore-keys: |
+            ios-simulator-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', 'gradle/libs.versions.toml') }}-
+            ios-simulator-v1-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./gradlew
+
+      - name: Run module tests and the public API check
+        run: ./gradlew :sendspin-kmp:testAndroidHostTest :sendspin-kmp:checkKotlinAbi
+
+      # An Android app on the consumer Kotlin floor builds the README quick start against
+      # the local publication, with R8 and the merged manifest permissions.
+      - name: Check the library as a consumer
+        run: |
+          ./gradlew :sendspin-kmp:publishToMavenLocal
+          ./gradlew -p sendspin-kmp/consumer-check \
+            :app:compileDebugKotlin :app:minifyReleaseWithR8 :app:checkReleasePermissions \
+            -PsendspinVersion='${{ steps.version.outputs.name }}'
+
+      # A rerun after a failure past the upload must not upload again: GitHub Packages
+      # refuses a second upload of a version (409). Skip the upload only when every
+      # publication of the version is there. A partial upload needs a manual cleanup.
+      - name: Check for an earlier upload of this version
+        id: uploaded
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION='${{ steps.version.outputs.name }}'
+          BASE="https://maven.pkg.github.com/${GITHUB_REPOSITORY}/io/github/music-assistant"
+          FOUND=0
+          TOTAL=0
+          for ARTIFACT in sendspin-kmp sendspin-kmp-android sendspin-kmp-iosarm64 sendspin-kmp-iossimulatorarm64; do
+            TOTAL=$((TOTAL + 1))
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' -u "${GITHUB_ACTOR}:${GITHUB_TOKEN}" \
+              "${BASE}/${ARTIFACT}/${VERSION}/${ARTIFACT}-${VERSION}.pom")
+            case "$CODE" in
+              200) FOUND=$((FOUND + 1)) ;;
+              401|403)
+                echo "::error::GitHub Packages refused the token (HTTP ${CODE}) for ${ARTIFACT} ${VERSION}."
+                exit 1
+                ;;
+              404) ;;
+              *) echo "::notice::GitHub Packages answered HTTP ${CODE} for ${ARTIFACT} ${VERSION}; counted as not uploaded." ;;
+            esac
+          done
+          if [ "$FOUND" -eq 0 ]; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          elif [ "$FOUND" -eq "$TOTAL" ]; then
+            echo "::notice::Version ${VERSION} is already in GitHub Packages; the upload is skipped."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Only ${FOUND} of ${TOTAL} publications of ${VERSION} are in GitHub Packages. Delete version ${VERSION} of each sendspin-kmp package, then run the workflow again."
+            exit 1
+          fi
+
+      - name: Publish to GitHub Packages
+        if: steps.uploaded.outputs.skip != 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./gradlew :sendspin-kmp:publishAllPublicationsToGitHubPackagesRepository
+
+      - name: Create and push tag
+        if: steps.guard.outputs.resume != 'true'
+        run: |
+          git tag -a "${{ steps.version.outputs.tag }}" -m "sendspin-kmp v${{ steps.version.outputs.name }}"
+          git push origin "${{ steps.version.outputs.tag }}"
+
+      # GitHub's generate-notes lists every app PR, so the PR list is the
+      # first-parent history of sendspin-kmp/ since the previous sendspin tag.
+      - name: Generate release notes
+        id: notes
+        run: |
+          VERSION='${{ steps.version.outputs.name }}'
+          PREV_TAG='${{ steps.guard.outputs.prev_tag }}'
+          {
+            echo "## sendspin-kmp ${VERSION}"
+            echo
+            echo '```kotlin'
+            echo "implementation(\"io.github.music-assistant:sendspin-kmp:${VERSION}\")"
+            echo '```'
+            echo
+            echo "See sendspin-kmp/README.md for the repository setup."
+            echo
+            # GitHub renders each newline in a Release body as a line break, so join the
+            # indented continuation lines of the wrapped CHANGELOG list items. A nested
+            # list item stays on its own line.
+            perl -0pe 's/\n {2,}(?![-*+] |\d+\. )(?=\S)/ /g' /tmp/changelog-section.md
+            if [ -n "$PREV_TAG" ]; then
+              echo
+              echo "### Pull requests since ${PREV_TAG}"
+              echo
+              git log --first-parent --pretty=format:"- %s" "${PREV_TAG}..HEAD" -- sendspin-kmp
+              echo
+            fi
+          } > /tmp/release-notes.md
+          echo "file=/tmp/release-notes.md" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "sendspin-kmp ${{ steps.version.outputs.name }}"
+          body_path: ${{ steps.notes.outputs.file }}
+          draft: false
+          prerelease: false
+          # "Latest" stays on the app releases, which carry the APK.
+          make_latest: 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute next version
+        id: next
+        run: |
+          CURRENT="${{ steps.version.outputs.name }}"
+          MAJOR=$(echo "$CURRENT" | cut -d. -f1)
+          MINOR=$(echo "$CURRENT" | cut -d. -f2)
+          NEXT_VERSION="${MAJOR}.$((MINOR + 1)).0"
+          echo "version=$NEXT_VERSION" >> "$GITHUB_OUTPUT"
+          echo "branch=chore/bump-sendspin-v${NEXT_VERSION}" >> "$GITHUB_OUTPUT"
+
+      # The empty "## <next>" CHANGELOG section collects entries until the next
+      # release; the guard above fails while it stays empty.
+      - name: Push version bump branch
+        run: |
+          NEXT='${{ steps.next.outputs.version }}'
+          if git ls-remote --exit-code --heads origin "${{ steps.next.outputs.branch }}" >/dev/null; then
+            echo "::notice::Branch ${{ steps.next.outputs.branch }} already exists; it is not pushed again."
+            exit 0
+          fi
+          git fetch origin main
+          git checkout -b "${{ steps.next.outputs.branch }}" origin/main
+          perl -pi -e "s/^sendspinVersion=.*/sendspinVersion=${NEXT}/" gradle.properties
+          awk -v h="## ${NEXT}" '!done && /^## / { print h; print ""; done = 1 } { print }' \
+            sendspin-kmp/CHANGELOG.md > /tmp/CHANGELOG.md
+          mv /tmp/CHANGELOG.md sendspin-kmp/CHANGELOG.md
+          # The README dependency line names the version that this run released.
+          RELEASED='${{ steps.version.outputs.name }}' perl -pi -e \
+            's/(io\.github\.music-assistant:sendspin-kmp:)[0-9][0-9A-Za-z.+-]*/$1$ENV{RELEASED}/g' \
+            sendspin-kmp/README.md
+          git add gradle.properties sendspin-kmp/CHANGELOG.md sendspin-kmp/README.md
+          git commit -m "chore: bump sendspin-kmp version to ${NEXT}"
+          git push origin "${{ steps.next.outputs.branch }}"
+
+      # Same mechanism as android-release.yml and ios-release.yml.
+      - name: Open bump PR
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const { owner, repo } = context.repo;
+            const branch = '${{ steps.next.outputs.branch }}';
+            const base = 'main';
+            const { data: existing } = await github.rest.pulls.list({
+              owner, repo, state: 'open', head: `${owner}:${branch}`, base, per_page: 1,
+            });
+            let prNumber;
+            if (existing.length > 0) {
+              prNumber = existing[0].number;
+              core.info(`PR #${prNumber} already open for ${branch}`);
+            } else {
+              const { data: pr } = await github.rest.pulls.create({
+                owner, repo, base, head: branch,
+                title: 'chore: bump sendspin-kmp version to ${{ steps.next.outputs.version }}',
+                body: 'Automated post-release version bump so `main` carries the next `sendspinVersion`, '
+                  + 'with an empty `## ${{ steps.next.outputs.version }}` section in `sendspin-kmp/CHANGELOG.md`. '
+                  + 'For a patch release instead, change both before merging.',
+                draft: true,
+                maintainer_can_modify: true,
+              });
+              prNumber = pr.number;
+              core.info(`Created PR #${prNumber}`);
+            }
+            await github.rest.issues.addLabels({
+              owner, repo, issue_number: prNumber, labels: ['automated', 'chore'],
+            });

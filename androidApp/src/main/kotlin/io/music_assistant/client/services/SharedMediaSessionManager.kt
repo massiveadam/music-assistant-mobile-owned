@@ -5,6 +5,7 @@ package io.music_assistant.client.services
 
 import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import android.media.AudioManager
 import android.media.session.PlaybackState
@@ -15,6 +16,8 @@ import android.support.v4.media.MediaDescriptionCompat
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
+import android.view.KeyEvent
+import androidx.core.content.IntentCompat
 import androidx.media.utils.MediaConstants
 import co.touchlab.kermit.Logger
 import coil3.ImageLoader
@@ -30,8 +33,10 @@ import io.music_assistant.client.data.model.client.RepeatMode
 import io.music_assistant.client.data.model.client.ResolvedChapter
 import io.music_assistant.client.data.model.client.chapterSeekSeconds
 import io.music_assistant.client.data.model.client.items.AppMediaItem
+import io.music_assistant.client.data.model.client.items.EpisodeNumberFormat
 import io.music_assistant.client.data.model.client.items.LongFormSeekDefaults
 import io.music_assistant.client.data.model.client.items.canBeFavorited
+import io.music_assistant.client.data.model.client.items.isLongFormSpokenContent
 import io.music_assistant.client.data.model.client.presentationChapter
 import io.music_assistant.client.data.model.client.toAbsoluteSeekSeconds
 import io.music_assistant.client.data.withPresentationChapter
@@ -82,9 +87,19 @@ private val SESSION_TRANSPORT_ACTIONS: Long =
         PlaybackStateCompat.ACTION_SEEK_TO or
         PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
         PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
+        PlaybackStateCompat.ACTION_FAST_FORWARD or
+        PlaybackStateCompat.ACTION_REWIND or
         PlaybackStateCompat.ACTION_SKIP_TO_QUEUE_ITEM or
         PlaybackStateCompat.ACTION_PLAY_FROM_MEDIA_ID or
         PlaybackStateCompat.ACTION_PLAY_FROM_SEARCH
+
+/** [SESSION_TRANSPORT_ACTIONS] for [data]: no seek bar to drag where it cannot seek. */
+internal fun sessionTransportActions(data: MediaNotificationData): Long =
+    if (data.isSeekable) {
+        SESSION_TRANSPORT_ACTIONS
+    } else {
+        SESSION_TRANSPORT_ACTIONS and PlaybackStateCompat.ACTION_SEEK_TO.inv()
+    }
 
 // The API 33+ media card shows the first two custom actions; the pre-33 notification mirrors it.
 private const val NOTIFICATION_CUSTOM_ACTION_SLOTS = 2
@@ -382,7 +397,10 @@ class SharedMediaSessionManager(
         return map { row ->
             when (row) {
                 is QueueDisplayRow.QueueItem -> MediaSessionCompat.QueueItem(
-                    (row.item.track as AppMediaItem).toMediaDescription(defaultIconUri)
+                    (row.item.track as AppMediaItem).toMediaDescription(
+                        defaultIconUri,
+                        episodeNumbers = strings?.episodeNumbers ?: EpisodeNumberFormat.SOURCE,
+                    )
                         .also { parentDescription = it },
                     row.sessionId,
                 )
@@ -432,18 +450,22 @@ class SharedMediaSessionManager(
 
     private fun nowPlayingDataFlow(): Flow<MediaNotificationData> =
         sourcePlayerData()
+            // Upstream of the chapter timer, so a late scope table re-emits with a fresh position.
+            .combine(dataSource.grantedScopes) { source, scopes -> source to scopes.canEditLibrary }
             .withPresentationChapter(
                 preferences = dataSource.userPreferences,
                 positionTracker = dataSource.positionTracker,
-                playerOf = { (player, _) -> player },
+                playerOf = { (source, _) -> source.first },
             )
-            .map { (source, chapter, elapsedSec) ->
+            .map { (sourceAndAccess, chapter, elapsedSec) ->
+                val (source, canEditLibrary) = sourceAndAccess
                 val (player, multiplePlayers) = source
                 MediaNotificationData.from(
                     playerData = player,
                     multiplePlayers = multiplePlayers,
                     effectiveElapsedSec = elapsedSec,
                     currentChapter = chapter,
+                    canEditLibrary = canEditLibrary,
                     isFavoritableStream = dataSource.canFavoriteCurrentlyPlaying(player),
                 )
             }
@@ -460,6 +482,8 @@ class SharedMediaSessionManager(
             override fun onPause() = act(PlayerAction.Pause)
             override fun onSkipToNext() = act(PlayerAction.Next)
             override fun onSkipToPrevious() = act(PlayerAction.Previous)
+            override fun onFastForward() = act(PlayerAction.SeekBy(LongFormSeekDefaults.FORWARD_SECONDS))
+            override fun onRewind() = act(PlayerAction.SeekBy(-LongFormSeekDefaults.BACK_SECONDS))
 
             override fun onSeekTo(pos: Long) {
                 // Host scrubbers return chapter-relative targets; remap them to absolute seconds.
@@ -497,6 +521,17 @@ class SharedMediaSessionManager(
                     is QueueDisplayRow.ChapterItem ->
                         act(PlayerAction.SeekTo(chapterSeekSeconds(row.chapter.start)))
                 }
+            }
+
+            override fun onMediaButtonEvent(mediaButtonEvent: Intent): Boolean {
+                val key = IntentCompat.getParcelableExtra(
+                    mediaButtonEvent,
+                    Intent.EXTRA_KEY_EVENT,
+                    KeyEvent::class.java,
+                )
+                val seek = key?.let(::wheelSeek) ?: return super.onMediaButtonEvent(mediaButtonEvent)
+                if (key.action == KeyEvent.ACTION_DOWN && key.repeatCount == 0) act(seek)
+                return true
             }
 
             override fun onCustomAction(action: String, extras: Bundle?) {
@@ -540,6 +575,22 @@ class SharedMediaSessionManager(
 
     private fun act(action: PlayerAction) {
         currentPlayer()?.let { dataSource.playerAction(it, action) }
+    }
+
+    /**
+     * In the car, the steering-wheel skip keys seek within an audiobook or a podcast episode. The
+     * on-screen Next and Previous (car, notification) are transport controls, not keys, so they
+     * still change the item. Null leaves the key to the default handling.
+     */
+    private fun wheelSeek(key: KeyEvent): PlayerAction.SeekBy? {
+        val offset = when (key.keyCode) {
+            KeyEvent.KEYCODE_MEDIA_NEXT -> LongFormSeekDefaults.FORWARD_SECONDS
+            KeyEvent.KEYCODE_MEDIA_PREVIOUS -> -LongFormSeekDefaults.BACK_SECONDS
+            else -> return null
+        }
+        val longForm = autoHostActive.value &&
+            currentPlayer()?.queueInfo?.currentItem?.track.isLongFormSpokenContent
+        return PlayerAction.SeekBy(offset).takeIf { longForm }
     }
 
     /**
@@ -603,7 +654,7 @@ class SharedMediaSessionManager(
             PlaybackStateCompat.STATE_PAUSED
         }
         val playbackState = PlaybackStateCompat.Builder()
-            .setActions(SESSION_TRANSPORT_ACTIONS)
+            .setActions(sessionTransportActions(data))
             .setState(
                 state,
                 data.elapsedTime ?: PlaybackState.PLAYBACK_POSITION_UNKNOWN,
@@ -619,27 +670,14 @@ class SharedMediaSessionManager(
             .build()
         session.setPlaybackState(playbackState)
 
-        val metadata = MediaMetadataCompat.Builder()
-            .putString(
-                MediaMetadataCompat.METADATA_KEY_TITLE,
-                titleMetadata(data),
-            )
-            .putString(
-                MediaMetadataCompat.METADATA_KEY_ARTIST,
-                artistMetadata(data, multiPlayer),
-            )
-            .putString(
-                MediaMetadataCompat.METADATA_KEY_ALBUM,
-                data.album,
-            )
-            .putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, bitmap)
-            .also { builder ->
-                data.duration?.let {
-                    builder.putLong(MediaMetadataCompat.METADATA_KEY_DURATION, it)
-                }
-            }
-            .build()
-        session.setMetadata(metadata)
+        session.setMetadata(
+            buildMediaSessionMetadata(
+                data = data,
+                bitmap = bitmap,
+                unknownTrack = strings?.unknownTrack ?: "",
+                artist = artistMetadata(data, multiPlayer),
+            ),
+        )
     }
 
     private fun titleMetadata(data: MediaNotificationData): String =
@@ -781,3 +819,57 @@ class SharedMediaSessionManager(
             R.drawable.baseline_arrow_right_alt_24
         }
 }
+
+/**
+ * Build the canonical metadata plus Android's preferred display projection. Radio streams
+ * show the on-air title and artist, with the station in the description when that adds
+ * information. If the station has to stand in for a missing title, don't repeat it in the
+ * description. MediaMetadataCompat only honors DISPLAY_DESCRIPTION when DISPLAY_TITLE is set.
+ * Non-radio items keep the platform's normal title / artist / album description fallback.
+ */
+internal fun buildMediaSessionMetadata(
+    data: MediaNotificationData,
+    bitmap: Bitmap?,
+    unknownTrack: String,
+    artist: String,
+): MediaMetadataCompat {
+    val station = data.stationName?.takeIf { it.isNotBlank() }
+    // Preserve the existing non-radio title value exactly. For radio, use the station when
+    // the server has not supplied an on-air title (including a blank title).
+    val title = if (station != null) {
+        data.name?.takeIf { it.isNotBlank() } ?: station
+    } else {
+        data.name ?: unknownTrack
+    }
+    val displayArtist = artist.takeIf {
+        data.artist?.isNotBlank() == true && !sameMetadataLabel(title, data.artist)
+    }
+    val displayStation = station?.takeUnless {
+        sameMetadataLabel(it, title) || sameMetadataLabel(it, data.artist)
+    }
+    return MediaMetadataCompat.Builder()
+        .putString(MediaMetadataCompat.METADATA_KEY_TITLE, title)
+        .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, artist)
+        .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, data.album)
+        .also { builder ->
+            station?.let {
+                builder.putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_TITLE, title)
+                displayArtist?.let { value ->
+                    builder.putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE, value)
+                }
+                displayStation?.let { value ->
+                    builder.putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_DESCRIPTION, value)
+                }
+            }
+        }
+        .putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, bitmap)
+        .also { builder ->
+            data.duration?.let {
+                builder.putLong(MediaMetadataCompat.METADATA_KEY_DURATION, it)
+            }
+        }
+        .build()
+}
+
+private fun sameMetadataLabel(first: String, second: String?): Boolean =
+    second != null && first.trim().equals(second.trim(), ignoreCase = true)

@@ -27,6 +27,7 @@ class QueueFactory(
             id = queueId,
             available = available,
             currentIndex = currentIndex,
+            itemCount = items,
             shuffleEnabled = shuffleEnabled,
             repeatMode = RepeatMode.fromServer(repeatMode) ?: RepeatMode.OFF,
             autoPlayEnabled = autoplayEnabled ?: dontStopTheMusicEnabled,
@@ -66,6 +67,7 @@ class QueueFactory(
                     format = streamDetails?.audioFormat,
                     provider = streamDetails?.provider,
                     audioProcessingChain = streamDetails?.audioProcessingChain,
+                    origin = origin?.container?.let(mediaItemFactory::create),
                 )
             } else {
                 Logger.w(

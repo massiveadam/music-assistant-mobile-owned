@@ -27,9 +27,10 @@ import musicassistantclient.composeapp.generated.resources.clickctx_album
 import musicassistantclient.composeapp.generated.resources.clickctx_artist
 import musicassistantclient.composeapp.generated.resources.clickctx_browse
 import musicassistantclient.composeapp.generated.resources.clickctx_detail
-import musicassistantclient.composeapp.generated.resources.clickctx_home
+import musicassistantclient.composeapp.generated.resources.clickctx_discover
 import musicassistantclient.composeapp.generated.resources.clickctx_library
 import musicassistantclient.composeapp.generated.resources.clickctx_playlist
+import musicassistantclient.composeapp.generated.resources.clickctx_podcast
 import musicassistantclient.composeapp.generated.resources.clickctx_search
 import musicassistantclient.composeapp.generated.resources.common_cancel
 import musicassistantclient.composeapp.generated.resources.default_click_dialog_save
@@ -41,7 +42,7 @@ import org.koin.compose.viewmodel.koinViewModel
 private val CTX_LABEL_WIDTH = 64.dp
 
 private fun ClickContext.label(): StringResource = when (this) {
-    ClickContext.HOME -> Res.string.clickctx_home
+    ClickContext.HOME -> Res.string.clickctx_discover
     ClickContext.LIBRARY -> Res.string.clickctx_library
     ClickContext.BROWSE -> Res.string.clickctx_browse
     ClickContext.ALBUM -> Res.string.clickctx_album
@@ -49,6 +50,7 @@ private fun ClickContext.label(): StringResource = when (this) {
     ClickContext.ARTIST -> Res.string.clickctx_artist
     ClickContext.SEARCH -> Res.string.clickctx_search
     ClickContext.DETAIL -> Res.string.clickctx_detail
+    ClickContext.PODCAST -> Res.string.clickctx_podcast
 }
 
 /**

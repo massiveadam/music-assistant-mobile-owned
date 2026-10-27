@@ -61,10 +61,14 @@ import io.music_assistant.client.data.model.client.items.Podcast
 import io.music_assistant.client.data.model.client.items.PodcastEpisode
 import io.music_assistant.client.data.model.client.items.RadioStation
 import io.music_assistant.client.data.model.client.items.Track
+import io.music_assistant.client.nav.BackHandler
+import io.music_assistant.client.nav.ScreenState
 import io.music_assistant.client.settings.SettingsRepository
+import io.music_assistant.client.ui.compose.ScreenSemantics
 import io.music_assistant.client.ui.compose.common.CenteredProgress
 import io.music_assistant.client.ui.compose.common.CenteredText
 import io.music_assistant.client.ui.compose.common.DataState
+import io.music_assistant.client.ui.compose.common.UnsupportedInstallCard
 import io.music_assistant.client.ui.compose.common.items.CategoryRow
 import io.music_assistant.client.ui.compose.common.items.ItemCategory
 import io.music_assistant.client.ui.compose.common.items.PlayHandler
@@ -73,17 +77,15 @@ import io.music_assistant.client.ui.compose.common.items.lazyListKey
 import io.music_assistant.client.ui.compose.common.moveToEnabledBoundary
 import io.music_assistant.client.ui.compose.common.toDisplayString
 import io.music_assistant.client.ui.compose.common.viewmodel.ActionsViewModel
-import io.music_assistant.client.ui.compose.nav.BackHandler
-import io.music_assistant.client.ui.compose.nav.ScreenState
 import io.music_assistant.client.ui.compose.nav.TopBarLayout
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import musicassistantclient.composeapp.generated.resources.Res
-import musicassistantclient.composeapp.generated.resources.home_edit_rows
-import musicassistantclient.composeapp.generated.resources.home_save_rows
-import musicassistantclient.composeapp.generated.resources.home_shortcuts
+import musicassistantclient.composeapp.generated.resources.discover_edit_rows
+import musicassistantclient.composeapp.generated.resources.discover_save_rows
+import musicassistantclient.composeapp.generated.resources.discover_shortcuts
 import musicassistantclient.composeapp.generated.resources.library_error
-import musicassistantclient.composeapp.generated.resources.nav_home
+import musicassistantclient.composeapp.generated.resources.nav_discover
 import musicassistantclient.composeapp.generated.resources.refresh
 import org.jetbrains.compose.resources.stringResource
 import sh.calvin.reorderable.ReorderableItem
@@ -97,6 +99,7 @@ fun HomeScreen(
     providerIconFetcher: (@Composable (Modifier, String, String) -> Unit),
     actionsViewModel: ActionsViewModel,
     state: HomeScreenState,
+    onOpenSettings: () -> Unit = {},
     onMyMusic: () -> Unit = {},
     onCollections: () -> Unit = {},
     onDownloads: () -> Unit = {},
@@ -128,6 +131,7 @@ fun HomeScreen(
                 loading = personalState.albums == null && personalState.loading),
         )
     }
+    val unsupportedInstallServerId by homeScreenViewModel.unsupportedInstallServerId.collectAsStateWithLifecycle()
 
     // Reconciled, enabled-first ordering. Authoritative for normal-mode display.
     val recommendationsState = homeScreenState.recommendations
@@ -212,12 +216,7 @@ fun HomeScreen(
                 color = MaterialTheme.colorScheme.error,
             )
         } else {
-            val onPlayClickLambda: PlayHandler<AppMediaItem> = remember(homeScreenViewModel) {
-                {
-                    item, option, radio, _ ->
-                    homeScreenViewModel.onPlayClick(item, option, radio)
-                }
-            }
+            val onPlayClickLambda: PlayHandler<AppMediaItem> = homeScreenViewModel::onPlayClick
             val rowContent: @Composable (HomeRow) -> Unit = { row ->
                 val source = editorial.sources.firstOrNull { it.rowId == row.category.id }
                 if (row.category.id == "discovery_mix") {
@@ -239,7 +238,7 @@ fun HomeScreen(
                     data = if (row.loading) DataState.Loading() else DataState.Data(row.category),
                     itemCategoryProvider = { it },
                     onNavigateClick = onNavigateClick,
-                    onPlayClick = onPlayClickLambda,
+                    onPlayClick = homeScreenViewModel::onPlayClick,
                     playlistActions = actionsViewModel,
                     libraryActions = actionsViewModel,
                     progressActions = actionsViewModel,
@@ -264,6 +263,16 @@ fun HomeScreen(
                             }
                             personalState.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp)) }
                             editorial.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp)) }
+                        }
+                    }
+                    // Hidden in edit mode: the reorder callback uses list indices of the rows only.
+                    unsupportedInstallServerId?.takeIf { !editMode }?.let { serverId ->
+                        item(key = UNSUPPORTED_INSTALL_KEY) {
+                            UnsupportedInstallCard(
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                onOpenSettings = onOpenSettings,
+                                onDismiss = { homeScreenViewModel.dismissUnsupportedInstall(serverId) },
+                            )
                         }
                     }
                     items(
@@ -334,6 +343,8 @@ fun HomeScreen(
     }
 }
 
+private const val UNSUPPORTED_INSTALL_KEY = "unsupported_install_card"
+
 /**
  * One reconciled home row: its display/reorder identity ([category], valid before
  * the row's items resolve) plus whether those items are still loading, which
@@ -390,7 +401,7 @@ internal fun getCategories(
             val shortcutsRow = HomeRow(
                 category = ItemCategory(
                     id = SHORTCUTS_CATEGORY_ID,
-                    title = Res.string.home_shortcuts.toDisplayString(),
+                    title = Res.string.discover_shortcuts.toDisplayString(),
                     items = shortcuts.map { it.item },
                     lazyListKey = SHORTCUTS_CATEGORY_ID,
                     tag = HomeScreenSemantics.SHORTCUTS_ROW_TAG,
@@ -423,13 +434,18 @@ private fun LandingPageTopBar(
     onInbox: () -> Unit = {},
 ) {
     TopAppBar(
-        title = { Text(title) },
+        title = {
+            Text(
+                title,
+                modifier = Modifier.testTag(ScreenSemantics.TITLE_TAG),
+            )
+        },
         actions = {
             IconButton(onClick = onToggleEditMode) {
                 Icon(
                     imageVector = if (editMode) Icons.Default.Done else Icons.Default.Edit,
                     contentDescription = stringResource(
-                        if (editMode) Res.string.home_save_rows else Res.string.home_edit_rows,
+                        if (editMode) Res.string.discover_save_rows else Res.string.discover_edit_rows,
                     ),
                 )
             }

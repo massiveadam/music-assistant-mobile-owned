@@ -21,8 +21,6 @@ import io.music_assistant.client.data.model.server.ServerPlayerMedia
 import io.music_assistant.client.data.model.server.ServerProviderInstance
 import io.music_assistant.client.data.model.server.ServerQueue
 import io.music_assistant.client.data.model.server.ServerQueueItem
-import io.music_assistant.client.data.model.server.ServerUser
-import io.music_assistant.client.data.model.server.ServerUserPreferences
 import io.music_assistant.client.data.model.server.StreamDetails
 import io.music_assistant.client.data.model.server.User
 import io.music_assistant.client.data.model.server.events.Event
@@ -47,6 +45,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.encodeToJsonElement
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -63,12 +62,18 @@ class FakeServiceClient : ServiceClient {
     private val queues = mutableListOf<ServerQueue>()
     private val queueItems = mutableMapOf<String, List<ServerQueueItem>>()
     private val mediaItemStore = FakeMediaItemStore()
-    private val shortcuts = mutableListOf<String>()
+
+    // The server keeps one object per user, and an update replaces it whole.
+    var preferences = JsonObject(emptyMap())
+        private set
     private val providers = mutableListOf<ServerProviderInstance>()
 
     val username = "user"
     val password = "password"
     var serverId = "serverId"
+
+    // 63 (server 2.10.0) and higher turn on the search source picker.
+    var schemaVersion = 39
 
     private val _sessionState: MutableStateFlow<SessionState> =
         MutableStateFlow(SessionState.Disconnected.Initial)
@@ -95,16 +100,12 @@ class FakeServiceClient : ServiceClient {
             }
 
             APICommands.AUTH_ME -> {
-                Result.success(
-                    answer(
-                        request = request,
-                        result = if (shortcuts.isNotEmpty()) {
-                            ServerUser(preferences = ServerUserPreferences(shortcuts))
-                        } else {
-                            ServerUser()
-                        },
-                    ),
-                )
+                Result.success(answer(request, buildJsonObject { put("preferences", preferences) }))
+            }
+
+            APICommands.AUTH_USER_UPDATE -> {
+                preferences = request.args!!["preferences"] as JsonObject
+                Result.success(answer(request, buildJsonObject { put("preferences", preferences) }))
             }
 
             APICommands.AUTH_PROVIDERS -> {
@@ -168,7 +169,8 @@ class FakeServiceClient : ServiceClient {
             APICommands.MUSIC_SEARCH -> {
                 val mediaTypes =
                     (request.args!!["media_types"] as JsonArray).map { (it as JsonPrimitive).content }
-                val libraryOnly = request.getArgOrNull("library_only") == "true"
+                val libraryOnly = request.getArgOrNull("library_only") == "true" ||
+                    request.args!!["providers"] == JsonArray(listOf(JsonPrimitive("library")))
                 val results = mediaItemStore.query(
                     request.getArg("search_query"),
                     inLibraryOnly = libraryOnly,
@@ -271,6 +273,20 @@ class FakeServiceClient : ServiceClient {
                         result = filterLibrary(request, MediaType.PLAYLIST).enrichLibraryItems(),
                     ),
                 )
+            }
+
+            APICommands.musicGet(APICommands.KIND_GENRES) -> {
+                Result.success(
+                    answer(
+                        request = request,
+                        result = findItem(request).enrichLibraryItem(),
+                    ),
+                )
+            }
+
+            // No artist or album rows: the genre page shows its header only.
+            APICommands.MUSIC_GENRES_OVERVIEW -> {
+                Result.success(answer(request, JsonArray(emptyList())))
             }
 
             APICommands.musicGet(APICommands.KIND_PLAYLISTS) -> {
@@ -530,6 +546,46 @@ class FakeServiceClient : ServiceClient {
                 )
             }
 
+            APICommands.musicGet(APICommands.KIND_TRACKS) -> {
+                Result.success(
+                    answer(
+                        request = request,
+                        result = findItem(request).enrichLibraryItem(),
+                    ),
+                )
+            }
+
+            APICommands.MUSIC_TRACKS_TRACK_ALBUMS -> {
+                Result.success(
+                    answer(
+                        request = request,
+                        result = listOfNotNull(findItem(request).album),
+                    ),
+                )
+            }
+
+            // A version is another track with the same name.
+            APICommands.MUSIC_TRACKS_TRACK_VERSIONS -> {
+                val track = findItem(request)
+
+                Result.success(
+                    answer(
+                        request = request,
+                        result = mediaItemStore.query(mediaType = MediaType.TRACK)
+                            .filter { it.name == track.name && it.itemId != track.itemId },
+                    ),
+                )
+            }
+
+            APICommands.METADATA_GET_TRACK_LYRICS -> {
+                Result.success(
+                    answer(
+                        request = request,
+                        result = listOf<String?>(null, null),
+                    ),
+                )
+            }
+
             else -> {
                 Result.failure(UnsupportedOperationException())
             }
@@ -691,7 +747,7 @@ class FakeServiceClient : ServiceClient {
                         // Schema 39+ moved recommendation row items behind
                         // MUSIC_RECOMMENDATIONS_ITEMS; this fake serves that
                         // shape unless a legacy version is set.
-                        schemaVersion = if (legacyVersion != null) -1 else 39,
+                        schemaVersion = if (legacyVersion != null) -1 else schemaVersion,
                         baseUrl = "http://homeassistant.example",
                     ),
                 )
@@ -760,7 +816,12 @@ class FakeServiceClient : ServiceClient {
     }
 
     fun addShortcut(item: ServerMediaItem) {
-        shortcuts.add(item.uri!!)
+        val shortcuts = (preferences["sidebar.shortcuts"] as? JsonArray).orEmpty()
+        setPreference("sidebar.shortcuts", JsonArray(shortcuts + JsonPrimitive(item.uri!!)))
+    }
+
+    fun setPreference(key: String, value: JsonElement) {
+        preferences = JsonObject(preferences + (key to value))
     }
 
     fun addProvider(provider: ServerProviderInstance) {

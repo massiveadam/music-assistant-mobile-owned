@@ -28,6 +28,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
+import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
@@ -82,6 +83,7 @@ import io.music_assistant.client.utils.formatDuration
 import kotlinx.coroutines.flow.Flow
 import musicassistantclient.composeapp.generated.resources.Res
 import musicassistantclient.composeapp.generated.resources.action_add_to_playlist
+import musicassistantclient.composeapp.generated.resources.action_start_endless_mix
 import musicassistantclient.composeapp.generated.resources.cd_toggle_queue
 import musicassistantclient.composeapp.generated.resources.common_delete
 import musicassistantclient.composeapp.generated.resources.item_subtitle_unknown
@@ -111,6 +113,8 @@ fun CollapsibleQueue(
     isCurrentPage: Boolean = true,
     contentPadding: PaddingValues,
     onAddToPlaylist: ((AppMediaItem) -> Unit)? = null,
+    /** Replaces this queue with an endless mix seeded by the item, like the item menus elsewhere. */
+    onStartEndlessMix: ((AppMediaItem) -> Unit)? = null,
     onChapterClick: (Chapter) -> Unit = {},
     livePositionFlow: Flow<Double>? = null,
 ) {
@@ -125,11 +129,14 @@ fun CollapsibleQueue(
         val items = (queueData?.data?.items as? DataState.Data)?.data
 
         val defaultLabel = stringResource(Res.string.queue_label)
-        val queueLabel = items?.let { list ->
-            val currentId = queueData.data.info.currentItem?.id
-            val currentPos = currentId?.let { id -> list.indexOfFirst { it.id == id } }
+        val currentId = queueData?.data?.info?.currentItem?.id
+        // Scans the queue only when it or the current item changes, not on every position tick.
+        val currentPos = remember(items, currentId) {
+            currentId?.let { id -> items?.indexOfFirst { it.id == id } }
                 ?.takeIf { it >= 0 }
                 ?.let { it + 1 }
+        }
+        val queueLabel = items?.let { list ->
             currentPos?.let { stringResource(Res.string.queue_label_with_position, it, list.size) }
         } ?: defaultLabel
 
@@ -176,6 +183,7 @@ fun CollapsibleQueue(
                 contentPadding = contentPadding,
                 queueAction = queueAction,
                 onAddToPlaylist = onAddToPlaylist,
+                onStartEndlessMix = onStartEndlessMix,
                 onChapterClick = onChapterClick,
                 livePositionFlow = livePositionFlow,
             )
@@ -194,6 +202,8 @@ fun Queue(
     contentPadding: PaddingValues,
     queueAction: (QueueAction) -> Unit,
     onAddToPlaylist: ((AppMediaItem) -> Unit)? = null,
+    /** Replaces this queue with an endless mix seeded by the item, like the item menus elsewhere. */
+    onStartEndlessMix: ((AppMediaItem) -> Unit)? = null,
     onChapterClick: (Chapter) -> Unit = {},
     livePositionFlow: Flow<Double>? = null,
 ) {
@@ -543,6 +553,24 @@ fun Queue(
                                         onDismissRequest = { menuItemId = null },
                                     ) {
                                         val track = item.track as? Track
+                                        val mixSeed = (item.track as? AppMediaItem)?.takeIf { it.canStartEndlessMix }
+                                        if (mixSeed != null && onStartEndlessMix != null) {
+                                            DropdownMenuItem(
+                                                text = {
+                                                    Text(stringResource(Res.string.action_start_endless_mix))
+                                                },
+                                                leadingIcon = {
+                                                    Icon(
+                                                        imageVector = Icons.Default.CellTower,
+                                                        contentDescription = null,
+                                                    )
+                                                },
+                                                onClick = {
+                                                    onStartEndlessMix(mixSeed)
+                                                    menuItemId = null
+                                                },
+                                            )
+                                        }
                                         if (track != null && onAddToPlaylist != null) {
                                             DropdownMenuItem(
                                                 text = {

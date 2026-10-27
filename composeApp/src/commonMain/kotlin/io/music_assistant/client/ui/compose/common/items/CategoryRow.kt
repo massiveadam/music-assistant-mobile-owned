@@ -257,6 +257,8 @@ fun CategoryRow(
                     playlistActions = playlistActions,
                     libraryActions = libraryActions,
                     providerIconFetcher = providerIconFetcher,
+                    // Inside an artist the artist name repeats on every album, so show the year.
+                    subtitle = if (containerItem is Artist) AlbumSubtitle.YEAR else AlbumSubtitle.ARTISTS,
                 )
 
                 is Playlist -> PlaylistWithMenu(
@@ -479,7 +481,7 @@ fun PreviewCategoryRowEmpty() {
     CategoryRow(
         title = "Category",
         onNavigateClick = {},
-        onPlayClick = { _, _, _, _ -> },
+        onPlayClick = { _, _ -> },
         mediaItems = emptyList(),
         playlistActions = object : PlaylistActions {
             override suspend fun getEditablePlaylists(): List<Playlist> {
@@ -499,7 +501,7 @@ fun PreviewCategoryRowEmpty() {
                 TODO("Not yet implemented")
             }
 
-            override fun onFavoriteClick(item: AppMediaItem) {
+            override fun onFavoriteChange(item: AppMediaItem, favorite: Boolean?) {
                 TODO("Not yet implemented")
             }
         },
@@ -520,7 +522,7 @@ fun PreviewCategoryLoading() {
             )
         },
         onNavigateClick = {},
-        onPlayClick = { _, _, _, _ -> },
+        onPlayClick = { _, _ -> },
         playlistActions = object : PlaylistActions {
             override suspend fun getEditablePlaylists(): List<Playlist> {
                 TODO("Not yet implemented")
@@ -539,7 +541,7 @@ fun PreviewCategoryLoading() {
                 TODO("Not yet implemented")
             }
 
-            override fun onFavoriteClick(item: AppMediaItem) {
+            override fun onFavoriteChange(item: AppMediaItem, favorite: Boolean?) {
                 TODO("Not yet implemented")
             }
         },
@@ -560,7 +562,7 @@ fun PreviewCategoryNoData() {
             )
         },
         onNavigateClick = {},
-        onPlayClick = { _, _, _, _ -> },
+        onPlayClick = { _, _ -> },
         playlistActions = object : PlaylistActions {
             override suspend fun getEditablePlaylists(): List<Playlist> {
                 TODO("Not yet implemented")
@@ -579,7 +581,7 @@ fun PreviewCategoryNoData() {
                 TODO("Not yet implemented")
             }
 
-            override fun onFavoriteClick(item: AppMediaItem) {
+            override fun onFavoriteChange(item: AppMediaItem, favorite: Boolean?) {
                 TODO("Not yet implemented")
             }
         },

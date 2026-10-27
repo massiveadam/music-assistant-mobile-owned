@@ -1,7 +1,9 @@
 package io.music_assistant.client.data.model.client.items.support
 
 import io.music_assistant.client.api.Request
+import io.music_assistant.client.data.model.client.Lyrics
 import io.music_assistant.client.data.model.client.items.AppMediaItem
+import io.music_assistant.client.data.model.client.items.Track
 import io.music_assistant.client.data.repository.MediaItemChange
 import io.music_assistant.client.data.repository.MediaItemRepository
 import io.music_assistant.client.data.repository.SearchResultData
@@ -13,9 +15,18 @@ import kotlin.collections.set
 class StubMediaItemRepository : MediaItemRepository {
     private val itemsResults = mutableMapOf<Pair<String, JsonObject?>, Result<List<AppMediaItem>>>()
 
+    override suspend fun supportsSourceRecovery() = false
+    override suspend fun supportsInteractiveReads() = false
+    override fun supportsRecommendationRowItems() = false
+    override fun personalItems(type: io.music_assistant.client.data.model.client.MediaType): List<AppMediaItem> = emptyList()
+    override suspend fun fetchAlbumGroups(itemId: String, provider: String, inLibraryOnly: Boolean, recover: Boolean): Result<MediaItemRepository.AlbumGroups> = error("Album groups not used by this fixture")
+
     override suspend fun fetchMediaItems(request: Request): Result<List<AppMediaItem>> {
         return itemsResults[request.key()] ?: error("No stub for: $request")
     }
+
+    override suspend fun fetchAllMediaItems(request: Request): List<AppMediaItem>? =
+        fetchMediaItems(request).getOrNull()
 
     private val _itemChanges = MutableSharedFlow<MediaItemChange>()
     override val itemChanges: SharedFlow<MediaItemChange> = _itemChanges
@@ -25,6 +36,10 @@ class StubMediaItemRepository : MediaItemRepository {
     }
 
     override suspend fun fetchMediaItem(request: Request): Result<AppMediaItem?> {
+        TODO("Not yet implemented")
+    }
+
+    override suspend fun fetchTrackLyrics(track: Track): Result<Lyrics?> {
         TODO("Not yet implemented")
     }
 

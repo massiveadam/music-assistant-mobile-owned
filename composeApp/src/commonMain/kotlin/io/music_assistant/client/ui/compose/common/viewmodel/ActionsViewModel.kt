@@ -8,13 +8,13 @@ import io.music_assistant.client.api.ServiceClient
 import io.music_assistant.client.api.fetchAllPages
 import io.music_assistant.client.data.MainDataSource
 import io.music_assistant.client.data.model.client.PlayerData
-import io.music_assistant.client.data.model.client.QueueOption
 import io.music_assistant.client.data.model.client.items.AppMediaItem
 import io.music_assistant.client.data.model.client.items.Genre
 import io.music_assistant.client.data.model.client.items.MarkableItem
 import io.music_assistant.client.data.model.client.items.Playlist
 import io.music_assistant.client.data.model.server.supportsFavoriteCurrentlyPlaying
 import io.music_assistant.client.data.play.PlayDispatcher
+import io.music_assistant.client.data.play.PlayMode
 import io.music_assistant.client.data.play.PlayRequest
 import io.music_assistant.client.data.repository.MediaItemChange
 import io.music_assistant.client.data.repository.MediaItemRepository
@@ -73,10 +73,8 @@ class ActionsViewModel(
         }
     }
 
-    /**
-     * Sets exact or toggles favorite status of the item.
-     */
-    override fun onFavoriteClick(item: AppMediaItem) = dataSource.toggleFavorite(item)
+    override fun onFavoriteChange(item: AppMediaItem, favorite: Boolean?) =
+        dataSource.setFavorite(item, favorite)
 
     /** Favourites the on-air song for a radio stream. See [MainDataSource.favoriteCurrentlyPlaying]. */
     fun onFavoriteStreamClick(playerData: PlayerData) {
@@ -167,7 +165,7 @@ class ActionsViewModel(
                     // Server only writes the playlog and emits no update event, so
                     // optimistically patch lists; reverts on next refetch if wrong.
                     mediaItemRepository.publishLocalChange(
-                        MediaItemChange.Updated(markable.withPlayed(true)),
+                        MediaItemChange.Updated(markable.withPlayed(true), carriesFavorite = false),
                     )
                     _toasts.emit(getString(Res.string.toast_marked_played))
                 }
@@ -184,7 +182,7 @@ class ActionsViewModel(
             apiClient.sendRequest(Request.Library.markUnplayed(markable))
                 .onSuccess {
                     mediaItemRepository.publishLocalChange(
-                        MediaItemChange.Updated(markable.withPlayed(false)),
+                        MediaItemChange.Updated(markable.withPlayed(false), carriesFavorite = false),
                     )
                     _toasts.emit(getString(Res.string.toast_marked_unplayed))
                 }
@@ -192,21 +190,19 @@ class ActionsViewModel(
         }
     }
 
-    fun onPlayClick(
-        item: AppMediaItem,
-        option: QueueOption,
-        radio: Boolean,
-    ) {
+    fun onPlayClick(item: AppMediaItem, mode: PlayMode) {
         val queueId = dataSource.selectedPlayer?.queueOrPlayerId ?: return
         item.mediaUri?.let { mediaUri ->
             Logger.withTag("PlayDispatch")
-                .i { "ActionsViewModel: uri=$mediaUri option=$option radio=$radio queue=$queueId" }
+                .i { "ActionsViewModel: uri=$mediaUri mode=$mode queue=$queueId" }
             playDispatcher.play(
                 PlayRequest(
                     queueOrPlayerId = queueId,
                     media = listOf(mediaUri),
-                    option = option,
-                    endlessMixMode = radio && item !is Genre,
+                    option = mode.option,
+                    endlessMixMode = mode.endlessMix && item !is Genre,
+                    shuffle = mode.shuffle,
+                    startFromBeginning = mode.startFromBeginning,
                 ),
             )
 

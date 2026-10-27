@@ -10,9 +10,11 @@ import io.music_assistant.client.connection.ConnectionManager
 import io.music_assistant.client.data.CarDspApplier
 import io.music_assistant.client.data.LocalPlayerAdapter
 import io.music_assistant.client.data.LocalPlayerEndpoints
+import io.music_assistant.client.data.LocalPlayerFactory
 import io.music_assistant.client.data.MainDataSource
 import io.music_assistant.client.data.PlayerPositionTracker
 import io.music_assistant.client.data.PlayerRequestFactory
+import io.music_assistant.client.data.SendspinLocalPlayerFactory
 import io.music_assistant.client.data.UserPreferences
 import io.music_assistant.client.data.announcement.AnnouncementRepository
 import io.music_assistant.client.data.factory.MediaItemFactory
@@ -20,7 +22,10 @@ import io.music_assistant.client.data.factory.PlayerFactory
 import io.music_assistant.client.data.factory.QueueFactory
 import io.music_assistant.client.data.play.PlayDispatcher
 import io.music_assistant.client.data.repository.AiRadioRepository
+import io.music_assistant.client.data.repository.ItemRefresher
+import io.music_assistant.client.data.repository.LibrarySortRepository
 import io.music_assistant.client.data.repository.MediaItemRepository
+import io.music_assistant.client.data.repository.ProviderRepository
 import io.music_assistant.client.data.repository.QueueOverlayRepository
 import io.music_assistant.client.data.repository.ServiceClientMediaItemRepository
 import io.music_assistant.client.imageloader.ArtworkDiskStore
@@ -59,6 +64,7 @@ import io.music_assistant.client.ui.compose.search.SearchViewModel
 import io.music_assistant.client.ui.compose.settings.CarActionsViewModel
 import io.music_assistant.client.ui.compose.settings.CarDspViewModel
 import io.music_assistant.client.ui.compose.settings.DefaultClickActionsViewModel
+import io.music_assistant.client.ui.compose.settings.SendspinSettingsViewModel
 import io.music_assistant.client.ui.compose.settings.SettingsViewModel
 import io.music_assistant.client.ui.theme.ThemeViewModel
 import io.music_assistant.client.utils.LocalNetworkPermissionGate
@@ -138,9 +144,10 @@ fun sharedModule(
         // app settings storage as everything else.
         single<SendspinKeyStore> { SettingsSendspinKeyStore(get()) }
         single { PlayerPositionTracker() }  // Shared live-position source of truth
-        single { UserPreferences() }        // Server-synced `auth/me` preferences
+        single { UserPreferences(get()) }   // Server-synced `auth/me` preferences
         singleOf(::PlayerRequestFactory)    // Pure PlayerAction → Request mapper
         single { LocalPlayerEndpoints(get(), get(), CoroutineScope(SupervisorJob() + Dispatchers.Default)) }
+        single<LocalPlayerFactory> { SendspinLocalPlayerFactory(get(), get(), get(), get(), get(), get()) }
         singleOf(::LocalPlayerAdapter)      // Local player: app side of the Sendspin module
         single {
             io.music_assistant.client.api.PersonalApi(
@@ -170,7 +177,7 @@ fun sharedModule(
         single { MediaItemFactory(get(), get()) } // private saves overlay
         singleOf(::PlayerFactory)           // Stateless DTO → domain mapper
         singleOf(::QueueFactory)            // Stateless DTO → domain mapper (depends on MediaItemFactory)
-        single { AiRadioRepository(get(), get()) } // Optional ai_radio plugin: list and run stations
+        single { AiRadioRepository(get(), get()) } // Optional ai_radio plugin: stations and queue DJ
         single {                            // Typed and spoken announcements; outlives the dialog
             AnnouncementRepository(
                 apiClient = get(),
@@ -180,9 +187,16 @@ fun sharedModule(
                 scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
             )
         }
+        single {                            // Sole owner of the `providers` list
+            ProviderRepository(
+                apiClient = get(),
+                scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+            )
+        }
         single {                            // Queue ambient sound overlay; Apply outlives the dialog
             QueueOverlayRepository(
                 apiClient = get(),
+                providerRepository = get(),
                 mediaItemFactory = get(),
                 scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
             )
@@ -194,6 +208,13 @@ fun sharedModule(
             )
         }
         single<MediaItemRepository> { ServiceClientMediaItemRepository(get(), get(), get()) }
+        single {                            // Sole refresh_item sender; refreshes outlive the page
+            ItemRefresher(
+                mediaItemRepository = get(),
+                scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+            )
+        }
+        singleOf(::LibrarySortRepository)   // Library sort choices; caches the 2.11 sort_options
         singleOf(::MainDataSource)          // Singleton - held by foreground service
         single(createdAtStart = true) {     // Eager - must observe car edges from launch
             CarDspApplier(get(), get(), get(), get())
@@ -205,10 +226,17 @@ fun sharedModule(
         factory { SchemaVersionWarningViewModel(get()) }
         factory { ActionsViewModel(get(), get(), get(), get()) }
         factory { SettingsViewModel(get(), get(), get(), get(), get(), get()) }
+        factory {
+            val mainDataSource = get<MainDataSource>()
+            SendspinSettingsViewModel(
+                settings = get(),
+                isLocalPlayerPlaying = { mainDataSource.localPlayer.value?.player?.isPlaying == true },
+            )
+        }
         factory { DefaultClickActionsViewModel(get()) }
         factory { CarActionsViewModel(get(), get()) }
         factory { CarDspViewModel(get(), get()) }
-        factory { AiRadioViewModel(get(), get()) }
+        factory { AiRadioViewModel(get(), get(), get()) }
         factory {
             AuthenticationViewModel(
                 auth = get(),
@@ -216,10 +244,12 @@ fun sharedModule(
             )
         }
         factory { LibraryCategoriesViewModel(get(), get()) }
-        factory { params -> LibraryListViewModel(params[0], get(), get(), get(), get(), get()) }
+        factory { params -> LibraryListViewModel(params[0], get(), get(), get(), get(), get(), get(), get()) }
         factory { params -> BrowseViewModel(params.getOrNull<String>(), get(), get(), get()) }
         factory { params ->
             ItemDetailsViewModel(
+                get(),
+                get(),
                 get(),
                 get(),
                 get(),
@@ -230,15 +260,15 @@ fun sharedModule(
             )
         }
         factory { params ->
-            ArtistDetailsViewModel(params[0], get(), get())
+            ArtistDetailsViewModel(params[0], get(), get(), get())
         }
         factory { ViewModeViewModel(get()) }
         factory { params -> ItemListViewModel(params[0], get(), get()) }
         factory { DspSettingsViewModel(get()) }
         factory { QueueDjViewModel(get(), get<MainDataSource>().aiRadioQueueDjAvailable) }
         factory { HomeScreenViewModel(get(), get(), get(), get(), get()) }
-        factory { SearchViewModel(get(), get(), get()) }
-        factory { ProviderViewModel(get()) }
+        factory { SearchViewModel(get(), get(), get(), get(), get()) }
+        factory { ProviderViewModel(get(), get()) }
     }
 
 /**

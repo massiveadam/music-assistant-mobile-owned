@@ -15,6 +15,7 @@ import io.music_assistant.client.ui.theme.ThemeSetting
 import io.music_assistant.client.utils.myJson
 import io.music_assistant.sendspin.api.AudioCodec
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.serialization.Serializable
@@ -471,57 +472,64 @@ class SettingsRepository(
         _sendspinEffectivePlayerId.update { id }
     }
 
-    private val _sendspinDeviceName = MutableStateFlow(
-        settings.getStringOrNull("sendspin_device_name") ?: "My Phone",
+    // Local player settings are saved as one unit: a save publishes one value, not one per field.
+    private val _sendspinPlayerSettings = MutableStateFlow(
+        SendspinPlayerSettings(
+            name = settings.getStringOrNull("sendspin_device_name") ?: DEVICE_NAME,
+            bufferSeconds = settings.getInt("sendspin_buffer_seconds", BUFFER_SECONDS_DEFAULT)
+                .coerceIn(BUFFER_SECONDS_MIN, BUFFER_SECONDS_MAX),
+            codecPreference = storedCodecOrPinnedDefault(),
+            bitDepth = settings.getInt("sendspin_bit_depth", BIT_DEPTH_DEFAULT)
+                .takeIf { it == BIT_DEPTH_HI_RES } ?: BIT_DEPTH_DEFAULT,
+            connectionOverride = SendspinConnectionSettings(
+                // Migration logic: if user has custom host or non-default port, they're using custom connection
+                enabled = settings.getBooleanOrNull("sendspin_use_custom_connection") ?: run {
+                    val hasCustomHost = secrets.getString("sendspin_host", "").isNotEmpty()
+                    val hasCustomPort =
+                        settings.getInt("sendspin_port", DEFAULT_SENDSPIN_PORT) != DEFAULT_SENDSPIN_PORT
+                    val useCustom = hasCustomHost || hasCustomPort
+                    settings.putBoolean("sendspin_use_custom_connection", useCustom)
+                    useCustom
+                },
+                tls = settings.getBoolean("sendspin_use_tls", false),
+                host = secrets.getString("sendspin_host", ""),
+                port = settings.getInt("sendspin_port", DEFAULT_SENDSPIN_PORT),
+                path = settings.getString("sendspin_path", DEFAULT_SENDSPIN_PATH),
+            ),
+        ),
     )
-    val sendspinDeviceName = _sendspinDeviceName.asStateFlow()
+    val sendspinPlayerSettings = _sendspinPlayerSettings.asStateFlow()
 
-    fun setSendspinDeviceName(name: String) {
-        settings.putString("sendspin_device_name", name)
-        _sendspinDeviceName.update { name }
+    /**
+     * The stored codec, or the default pinned on first read. A new install gets
+     * [DEFAULT_CODEC]. An install that has a server or used the local player had
+     * Opus as the default, so it keeps Opus: a silent switch would raise its
+     * remote-access bandwidth about tenfold.
+     */
+    private fun storedCodecOrPinnedDefault(): AudioCodec {
+        val stored = settings.getStringOrNull("sendspin_codec_preference")
+            ?.let { name -> AudioCodec.entries.firstOrNull { it.name.equals(name, ignoreCase = true) } }
+        return stored ?: run {
+            val existingInstall = secrets.hasKey("host") || settings.hasKey("sendspin_enabled")
+            (if (existingInstall) AudioCodec.OPUS else DEFAULT_CODEC)
+                .also { settings.putString("sendspin_codec_preference", it.name) }
+        }
     }
 
-    private val _sendspinPort = MutableStateFlow(
-        settings.getInt("sendspin_port", 8095),
-    )
-    val sendspinPort = _sendspinPort.asStateFlow()
-
-    fun setSendspinPort(port: Int) {
-        settings.putInt("sendspin_port", port)
-        _sendspinPort.update { port }
-    }
-
-    private val _sendspinPath = MutableStateFlow(
-        settings.getString("sendspin_path", "/sendspin"),
-    )
-    val sendspinPath = _sendspinPath.asStateFlow()
-
-    fun setSendspinPath(path: String) {
-        settings.putString("sendspin_path", path)
-        _sendspinPath.update { path }
-    }
-
-    private val _sendspinCodecPreference = MutableStateFlow(
-        AudioCodec.entries.firstOrNull {
-            it.name.equals(settings.getString("sendspin_codec_preference", DEFAULT_CODEC.name), ignoreCase = true)
-        } ?: DEFAULT_CODEC,
-    )
-    val sendspinCodecPreference = _sendspinCodecPreference.asStateFlow()
-
-    fun setSendspinCodecPreference(codec: AudioCodec) {
-        settings.putString("sendspin_codec_preference", codec.name)
-        _sendspinCodecPreference.update { codec }
-    }
-
-    // Advertised buffer_capacity, stored in MB (converted to bytes when building the client hello).
-    private val _sendspinBufferCapacityMb = MutableStateFlow(
-        settings.getInt("sendspin_buffer_capacity_mb", BUFFER_MB_DEFAULT),
-    )
-    val sendspinBufferCapacityMb = _sendspinBufferCapacityMb.asStateFlow()
-
-    fun setSendspinBufferCapacityMb(mb: Int) {
-        settings.putInt("sendspin_buffer_capacity_mb", mb)
-        _sendspinBufferCapacityMb.update { mb }
+    fun setSendspinPlayerSettings(value: SendspinPlayerSettings) {
+        settings.putString("sendspin_device_name", value.name)
+        settings.putInt("sendspin_buffer_seconds", value.bufferSeconds)
+        settings.remove("sendspin_buffer_capacity_mb") // Replaced by the seconds above.
+        settings.putString("sendspin_codec_preference", value.codecPreference.name)
+        settings.putInt("sendspin_bit_depth", value.bitDepth)
+        with(value.connectionOverride) {
+            settings.putBoolean("sendspin_use_custom_connection", enabled)
+            settings.putBoolean("sendspin_use_tls", tls)
+            secrets.putString("sendspin_host", host)
+            settings.putInt("sendspin_port", port)
+            settings.putString("sendspin_path", path)
+        }
+        _sendspinPlayerSettings.update { value }
     }
 
     // Whether the local player's now-playing slider draws the buffered-ahead segment.
@@ -533,26 +541,6 @@ class SettingsRepository(
     fun setShowBufferVisualization(show: Boolean) {
         settings.putBoolean("show_buffer_visualization", show)
         _showBufferVisualization.update { show }
-    }
-
-    private val _sendspinHost = MutableStateFlow(
-        secrets.getString("sendspin_host", ""),
-    )
-    val sendspinHost = _sendspinHost.asStateFlow()
-
-    fun setSendspinHost(host: String) {
-        secrets.putString("sendspin_host", host)
-        _sendspinHost.update { host }
-    }
-
-    private val _sendspinUseTls = MutableStateFlow(
-        settings.getBoolean("sendspin_use_tls", false),
-    )
-    val sendspinUseTls = _sendspinUseTls.asStateFlow()
-
-    fun setSendspinUseTls(enabled: Boolean) {
-        settings.putBoolean("sendspin_use_tls", enabled)
-        _sendspinUseTls.update { enabled }
     }
 
     // User-tuned client-side playback delay (ms). LocalPlayerAdapter negates it
@@ -574,23 +562,6 @@ class SettingsRepository(
         val clamped = ms.coerceIn(-2000, 2000)
         settings.putInt("sendspin_static_delay_ms", clamped)
         _sendspinStaticDelayMs.update { clamped }
-    }
-
-    // Migration logic: if user has custom host or non-default port, they're using custom connection
-    private val _sendspinUseCustomConnection = MutableStateFlow(
-        settings.getBooleanOrNull("sendspin_use_custom_connection") ?: run {
-            val hasCustomHost = secrets.getString("sendspin_host", "").isNotEmpty()
-            val hasCustomPort = settings.getInt("sendspin_port", 8095) != 8095
-            val useCustom = hasCustomHost || hasCustomPort
-            settings.putBoolean("sendspin_use_custom_connection", useCustom)
-            useCustom
-        },
-    )
-    val sendspinUseCustomConnection = _sendspinUseCustomConnection.asStateFlow()
-
-    fun setSendspinUseCustomConnection(enabled: Boolean) {
-        settings.putBoolean("sendspin_use_custom_connection", enabled)
-        _sendspinUseCustomConnection.update { enabled }
     }
 
     // Connection method preference
@@ -740,12 +711,11 @@ class SettingsRepository(
         }
     }
 
-    fun viewMode(mediaType: MediaType) =
-        if (mediaType == MediaType.TRACK) {
-            MutableStateFlow(ViewMode.LIST).asStateFlow()
-        } else {
-            viewModeFlow(mediaType).asStateFlow()
-        }
+    // One read-only view per type: Compose restarts a collector when the flow instance changes.
+    private val viewModeViews = mutableMapOf<MediaType, StateFlow<ViewMode>>()
+
+    fun viewMode(mediaType: MediaType): StateFlow<ViewMode> =
+        viewModeViews.getOrPut(mediaType) { viewModeFlow(mediaType).asStateFlow() }
 
     fun setViewMode(mediaType: MediaType, mode: ViewMode) {
         if (mediaType == MediaType.TRACK) return
@@ -799,13 +769,10 @@ class SettingsRepository(
     }
 
     // Per-MediaType library-list sort, persisted like view mode and filters. The
-    // ViewModel is the only writer, so a plain get/set is enough — no flow.
-    fun getSortOption(mediaType: MediaType): SortOption {
-        val stored = settings.getStringOrNull(librarySortKey(mediaType))?.let { parseSortOption(it) }
-        // A field dropped from SortConfig by a later app version must not stick.
-        return stored?.takeIf { it.field in SortConfig.fieldsFor(mediaType) }
-            ?: SortConfig.defaultFor(mediaType)
-    }
+    // ViewModel is the only writer, so a plain get/set is enough — no flow. The fields depend on
+    // the server, so `LibrarySortMenu.resolve` checks the value, not this repository.
+    fun getSortOption(mediaType: MediaType): SortOption? =
+        settings.getStringOrNull(librarySortKey(mediaType))?.let { parseSortOption(it) }
 
     fun setSortOption(mediaType: MediaType, option: SortOption) {
         settings.putString(librarySortKey(mediaType), serializeSortOption(option))
@@ -876,14 +843,19 @@ class SettingsRepository(
         )
 
         val CODECS: List<AudioCodec> = listOf(AudioCodec.OPUS, AudioCodec.FLAC, AudioCodec.PCM)
-        val DEFAULT_CODEC: AudioCodec = AudioCodec.OPUS
+        val DEFAULT_CODEC: AudioCodec = AudioCodec.FLAC
+        const val DEVICE_NAME: String = "My Phone"
+        const val DEFAULT_SENDSPIN_PORT: Int = 8095
+        const val DEFAULT_SENDSPIN_PATH: String = "/sendspin"
 
-        // Advertised to the server in client/hello as `buffer_capacity`: a hard per-player
-        // limit in BYTES on queued audio, uniform across codecs. User slider limits, in MB.
+        // Seconds of audio the local player buffers; the module turns them into the
+        // `buffer_capacity` bytes. The server sends at most 30 s ahead.
+        const val BUFFER_SECONDS_MIN: Int = 5
+        const val BUFFER_SECONDS_MAX: Int = 30
+        const val BUFFER_SECONDS_STEP: Int = 5
+        const val BUFFER_SECONDS_DEFAULT: Int = 10
         const val BYTES_PER_MB: Int = 1_000_000
-        const val BUFFER_MB_MIN: Int = 5
-        const val BUFFER_MB_MAX: Int = 50
-        const val BUFFER_MB_STEP: Int = 5
-        const val BUFFER_MB_DEFAULT: Int = 15
+        const val BIT_DEPTH_DEFAULT: Int = 16
+        const val BIT_DEPTH_HI_RES: Int = 24
     }
 }

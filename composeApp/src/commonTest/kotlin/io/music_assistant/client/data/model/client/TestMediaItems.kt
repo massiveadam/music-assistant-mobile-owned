@@ -2,6 +2,7 @@ package io.music_assistant.client.data.model.client
 
 import io.music_assistant.client.data.model.client.items.Album
 import io.music_assistant.client.data.model.client.items.Artist
+import io.music_assistant.client.data.model.client.items.AudioSource
 import io.music_assistant.client.data.model.client.items.Audiobook
 import io.music_assistant.client.data.model.client.items.Genre
 import io.music_assistant.client.data.model.client.items.Playlist
@@ -45,10 +46,14 @@ internal fun testRadio(isPlayable: Boolean = true, isDynamic: Boolean = false) =
     isDynamic = isDynamic,
 )
 
-internal fun testPodcastEpisode(isPlayable: Boolean = true) = PodcastEpisode(
+internal fun testPodcastEpisode(
+    isPlayable: Boolean = true,
+    fullyPlayed: Boolean? = null,
+    resumePositionMs: Long? = null,
+) = PodcastEpisode(
     itemId = "id", provider = "test", name = "name", providerMappings = null, metadata = null,
     favorite = null, uri = null, images = emptyMap(), duration = null, isPlayable = isPlayable,
-    podcast = null, fullyPlayed = null, resumePositionMs = null, version = null,
+    podcast = null, fullyPlayed = fullyPlayed, resumePositionMs = resumePositionMs, version = null,
 )
 
 internal fun testPodcast() = Podcast(
@@ -78,4 +83,9 @@ internal fun testGenre() = Genre(
     favorite = null,
     uri = null,
     images = emptyMap(),
+)
+
+internal fun testAudioSource(canPlayPause: Boolean) = AudioSource(
+    itemId = "id", provider = "test", name = "name", providerMappings = null, metadata = null,
+    uri = null, images = emptyMap(), isPlayable = true, canPlayPause = canPlayPause,
 )

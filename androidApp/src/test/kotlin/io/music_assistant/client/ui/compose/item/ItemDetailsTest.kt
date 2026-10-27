@@ -2,10 +2,14 @@ package io.music_assistant.client.ui.compose.item
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
@@ -15,35 +19,36 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import io.music_assistant.client.api.APICommands
-import io.music_assistant.client.api.Request
 import io.music_assistant.client.data.model.client.AppMediaItemFixtures
-import io.music_assistant.client.data.model.client.QueueOption
+import io.music_assistant.client.data.model.client.Lyrics
 import io.music_assistant.client.data.model.client.items.Album
 import io.music_assistant.client.data.model.client.items.AppMediaItem
-import io.music_assistant.client.data.repository.MediaItemRepository
+import io.music_assistant.client.data.model.client.items.RefreshItemAction
+import io.music_assistant.client.data.model.client.items.Track
 import io.music_assistant.client.support.get
-import io.music_assistant.client.support.rules.createTestRuleChain
+import io.music_assistant.client.support.isTab
 import io.music_assistant.client.ui.compose.common.DataState
 import io.music_assistant.client.ui.compose.common.ExtractedColors
 import io.music_assistant.client.ui.compose.common.ExtractedColorsSource
 import io.music_assistant.client.ui.compose.support.inScrollable
-import io.music_assistant.client.utils.support.MockFunction0
-import io.music_assistant.client.utils.support.MockFunction2
-import kotlinx.serialization.json.jsonPrimitive
 import musicassistantclient.composeapp.generated.resources.Res
+import musicassistantclient.composeapp.generated.resources.action_choose_artist
+import musicassistantclient.composeapp.generated.resources.action_find_on_music_services
+import musicassistantclient.composeapp.generated.resources.action_go_to_album
 import musicassistantclient.composeapp.generated.resources.action_go_to_artist
-import musicassistantclient.composeapp.generated.resources.cd_album_item
+import musicassistantclient.composeapp.generated.resources.action_go_to_track
+import musicassistantclient.composeapp.generated.resources.action_lyrics
+import musicassistantclient.composeapp.generated.resources.action_refresh_item
 import musicassistantclient.composeapp.generated.resources.cd_more
-import musicassistantclient.composeapp.generated.resources.cd_view_all
-import org.junit.Before
+import musicassistantclient.composeapp.generated.resources.cd_refreshing_item
+import musicassistantclient.composeapp.generated.resources.item_tab_similar_tracks
+import musicassistantclient.composeapp.generated.resources.item_tab_versions
+import musicassistantclient.composeapp.generated.resources.media_type_albums
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.koin.core.context.loadKoinModules
-import org.koin.dsl.module
-import org.koin.core.context.GlobalContext.get as getKoin
-import kotlin.test.assertEquals
 
 private val NoColors = object : ExtractedColorsSource {
     override fun peek(imageUrl: String): ExtractedColors? = null
@@ -53,7 +58,7 @@ private val NoColors = object : ExtractedColorsSource {
 /**
  * Composes with inspection mode on so the Koin-backed dynamic-colors seams
  * (`rememberDynamicColorsEnabled`, `dynamicColorsMenuOption`) short-circuit to their
- * @Preview defaults. Artist section view models still use the test Koin graph.
+ * @Preview defaults instead of hitting a Koin graph this test doesn't start.
  */
 private fun ComposeContentTestRule.setInspectableContent(content: @Composable () -> Unit) =
     setContent {
@@ -63,137 +68,7 @@ private fun ComposeContentTestRule.setInspectableContent(content: @Composable ()
 @RunWith(AndroidJUnit4::class)
 class ItemDetailsTest {
     @get:Rule
-    val testRuleChain = createTestRuleChain()
-
-    @get:Rule
     val composeTestRule = createComposeRule()
-
-    @Before
-    fun setEmptyArtistSections() {
-        setArtistAlbums(owned = emptyList(), all = emptyList())
-    }
-
-    @Test
-    fun `displays artists`() {
-        val artist = AppMediaItemFixtures.artist()
-        val albums = listOf(
-            AppMediaItemFixtures.album(artist = artist),
-            AppMediaItemFixtures.album(artist = artist),
-        )
-        setArtistAlbums(owned = emptyList(), all = albums)
-
-        composeTestRule.setInspectableContent {
-            ItemDetails(
-                state = ItemDetailsViewModel.State(
-                    itemState = DataState.Data(artist),
-                    albumsState = DataState.NoData(),
-                    playableItemsState = DataState.NoData(),
-                ),
-                geEditablePlaylists = suspend { emptyList() },
-                fetchColors = NoColors,
-            )
-        }
-
-        composeTestRule.onAllNodes(hasText(artist.displayName)).onFirst().assertIsDisplayed()
-        composeTestRule.inScrollable("LazyVerticalGrid") {
-            onNode(
-                hasContentDescription(
-                    Res.string.cd_album_item.get(
-                        albums[0].displayName,
-                        albums[0].provider,
-                    ),
-                ),
-            ).assertIsDisplayed()
-
-            onNode(
-                hasContentDescription(
-                    Res.string.cd_album_item.get(
-                        albums[1].displayName,
-                        albums[1].provider,
-                    ),
-                ),
-            ).assertIsDisplayed()
-        }
-    }
-
-    @Test
-    fun `displays artists with unified albums`() {
-        val artist = AppMediaItemFixtures.artist().copy(provider = "library")
-        val owned = AppMediaItemFixtures.album(artist = artist).copy(name = "Local purchase", provider = "library")
-        val streaming = AppMediaItemFixtures.album(artist = artist).copy(name = "Streaming exclusive")
-        setArtistAlbums(owned = listOf(owned), all = listOf(owned, streaming))
-        composeTestRule.setInspectableContent {
-            ItemDetails(
-                state = ItemDetailsViewModel.State(
-                    itemState = DataState.Data(artist),
-                    albumsState = DataState.NoData(),
-                    playableItemsState = DataState.NoData(),
-                ),
-                geEditablePlaylists = suspend { emptyList() },
-                fetchColors = NoColors,
-            )
-        }
-        composeTestRule.inScrollable("LazyVerticalGrid") {
-            onNode(
-                hasContentDescription(Res.string.cd_album_item.get(owned.displayName, owned.provider)),
-            ).assertIsDisplayed()
-            onNode(
-                hasContentDescription(Res.string.cd_album_item.get(streaming.displayName, streaming.provider)),
-            ).assertIsDisplayed()
-            onNode(hasText("Owned albums")).assertIsDisplayed()
-            onNode(hasText("Other")).assertIsDisplayed()
-        }
-    }
-
-    private fun setArtistAlbums(owned: List<Album>, all: List<Album>) {
-        // ArtistContent now obtains its sections from a separate Koin view model,
-        // rather than ItemDetailsViewModel.State. Feed that view model's repository.
-        val repository = getKoin().get<MediaItemRepository>()
-        val fixtureRepository = object : MediaItemRepository by repository {
-            override suspend fun fetchAlbumGroups(itemId: String, provider: String, inLibraryOnly: Boolean, recover: Boolean) =
-                Result.success(MediaItemRepository.AlbumGroups(owned, if (inLibraryOnly) owned else all, emptyList()))
-
-            override suspend fun fetchMediaItems(request: Request): Result<List<AppMediaItem>> =
-                when (request.command) {
-                    APICommands.MUSIC_ARTISTS_ARTIST_ALBUMS -> Result.success(
-                        if (request.args?.get("provider_instance_id_or_domain")?.jsonPrimitive?.content == "library") {
-                            owned
-                        } else {
-                            all
-                        },
-                    )
-                    APICommands.MUSIC_ARTISTS_TOP_TRACKS -> Result.success(emptyList())
-                    else -> repository.fetchMediaItems(request)
-                }
-        }
-        loadKoinModules(module { single<MediaItemRepository> { fixtureRepository } })
-    }
-
-    @Test
-    fun `displays albums`() {
-        val artist = AppMediaItemFixtures.artist()
-        val album = AppMediaItemFixtures.album(artist = artist)
-        val tracks = AppMediaItemFixtures.tracks(listOf("Track 1", "Track 2"), album)
-
-        composeTestRule.setInspectableContent {
-            ItemDetails(
-                state = ItemDetailsViewModel.State(
-                    itemState = DataState.Data(album),
-                    albumsState = DataState.NoData(),
-                    playableItemsState = DataState.Data(tracks),
-                ),
-                geEditablePlaylists = suspend { emptyList() },
-                fetchColors = NoColors,
-            )
-        }
-
-        composeTestRule.onAllNodes(hasText(album.displayName)).onFirst().assertIsDisplayed()
-        composeTestRule.onAllNodes(hasText(artist.displayName)).onFirst().assertIsDisplayed()
-        composeTestRule.inScrollable("LazyVerticalGrid") {
-            onNode(hasContentDescription(tracks[0].displayName)).assertIsDisplayed()
-            onNode(hasContentDescription(tracks[1].displayName)).assertIsDisplayed()
-        }
-    }
 
     @Test
     fun `displays album version`() {
@@ -236,27 +111,39 @@ class ItemDetailsTest {
     }
 
     @Test
-    fun `displays playlists`() {
-        val playlist = AppMediaItemFixtures.playlist()
-        val tracks = AppMediaItemFixtures.tracks(listOf("Track 1", "Track 2"))
+    fun `tapping the album artist line navigates to the single artist`() {
+        val artist = AppMediaItemFixtures.artist(name = "Solo")
+        val album = AppMediaItemFixtures.album(artist = artist)
+        var navigatedTo: AppMediaItem? = null
 
         composeTestRule.setInspectableContent {
-            ItemDetails(
-                state = ItemDetailsViewModel.State(
-                    itemState = DataState.Data(playlist),
-                    albumsState = DataState.NoData(),
-                    playableItemsState = DataState.Data(tracks),
-                ),
-                geEditablePlaylists = suspend { emptyList() },
-                fetchColors = NoColors,
-            )
+            ItemHeader(item = album, navigateToItem = { navigatedTo = it })
         }
 
-        composeTestRule.onAllNodes(hasText(playlist.displayName)).onFirst().assertIsDisplayed()
-        composeTestRule.inScrollable("LazyVerticalGrid") {
-            onNode(hasContentDescription(tracks[0].displayName)).assertIsDisplayed()
-            onNode(hasContentDescription(tracks[1].displayName)).assertIsDisplayed()
+        composeTestRule.onNodeWithText("Solo").performClick()
+
+        composeTestRule.onNodeWithText(Res.string.action_choose_artist.get()).assertIsNotDisplayed()
+        assertEquals(artist, navigatedTo)
+    }
+
+    @Test
+    fun `tapping a multi-artist album line opens the choose-artist dialog`() {
+        val first = AppMediaItemFixtures.artist(name = "First")
+        val second = AppMediaItemFixtures.artist(name = "Second")
+        val album = AppMediaItemFixtures.album().copy(artists = listOf(first, second))
+        var navigatedTo: AppMediaItem? = null
+
+        composeTestRule.setInspectableContent {
+            ItemHeader(item = album, navigateToItem = { navigatedTo = it })
         }
+
+        composeTestRule.onNodeWithText("First, Second").performClick()
+        composeTestRule.onNodeWithText(Res.string.action_choose_artist.get()).assertIsDisplayed()
+        assertNull(navigatedTo)
+
+        composeTestRule.onNodeWithText("Second").performClick()
+
+        assertEquals(second, navigatedTo)
     }
 
     @Test
@@ -309,84 +196,167 @@ class ItemDetailsTest {
     }
 
     @Test
-    fun `can play any item`() {
-        val state = mutableStateOf(
-            ItemDetailsViewModel.State(
-                itemState = DataState.Loading(),
-                albumsState = DataState.Loading(),
-                playableItemsState = DataState.Loading(),
-            ),
-        )
-
-        val onPlayClick = MockFunction2<QueueOption, Boolean>()
+    fun `track shows albums and versions but no similar tab without provider support`() {
+        val album = AppMediaItemFixtures.album(name = "On Album")
+        val track = AppMediaItemFixtures.track(name = "Song", album = album)
+        val version = AppMediaItemFixtures.track(name = "Song (Live)")
 
         composeTestRule.setInspectableContent {
+            var state by remember {
+                mutableStateOf(
+                    trackState(
+                        track,
+                        albumsState = DataState.Data(listOf(album)),
+                        trackVersionsState = DataState.Data(listOf(version)),
+                    ),
+                )
+            }
             ItemDetails(
-                state = state.value,
-                geEditablePlaylists = suspend { emptyList() },
+                state = state,
+                onTabSelected = { state = state.copy(userSelectedTab = it) },
                 fetchColors = NoColors,
-                onPlayClick = onPlayClick,
             )
         }
 
-        listOf(
-            AppMediaItemFixtures.artist(),
-            AppMediaItemFixtures.album(),
-            AppMediaItemFixtures.playlist(),
-            AppMediaItemFixtures.podcast(),
-            AppMediaItemFixtures.audiobook(),
-        ).forEach {
-            onPlayClick.reset()
+        composeTestRule.onNode(isTab(Res.string.media_type_albums.get())).assertIsDisplayed()
+        composeTestRule.onNode(isTab(Res.string.item_tab_versions.get())).assertIsDisplayed()
+        composeTestRule.onNode(isTab(Res.string.item_tab_similar_tracks.get())).assertDoesNotExist()
+        composeTestRule.inScrollable("LazyVerticalGrid") {
+            onNode(hasContentDescription(album.name, substring = true)).assertIsDisplayed()
+        }
 
-            state.value = ItemDetailsViewModel.State(
-                itemState = DataState.Data(it),
-                albumsState = DataState.NoData(),
-                playableItemsState = DataState.NoData(),
-            )
-
-            composeTestRule.onAllNodes(hasContentDescription("Play now")).onFirst().performClick()
-            assertEquals(onPlayClick.arg1, QueueOption.REPLACE)
-            assertEquals(onPlayClick.arg2, false)
+        composeTestRule.onNode(isTab(Res.string.item_tab_versions.get())).performClick()
+        composeTestRule.inScrollable("LazyVerticalGrid") {
+            onNode(hasContentDescription(version.name, substring = true)).assertIsDisplayed()
         }
     }
 
     @Test
-    fun `can return from any item`() {
-        val onBack = MockFunction0()
-        val state = mutableStateOf(
-            ItemDetailsViewModel.State(
-                itemState = DataState.Loading(),
-                albumsState = DataState.Loading(),
-                playableItemsState = DataState.Loading(),
-            ),
-        )
+    fun `track shows the similar tab once similar tracks load`() {
+        val track = AppMediaItemFixtures.track(name = "Song")
+        val similar = AppMediaItemFixtures.track(name = "Like Song")
 
         composeTestRule.setInspectableContent {
+            var state by remember {
+                mutableStateOf(
+                    trackState(
+                        track,
+                        albumsState = DataState.Data(listOf(AppMediaItemFixtures.album())),
+                        similarTracksState = DataState.Data(listOf(similar)),
+                    ),
+                )
+            }
             ItemDetails(
-                state = state.value,
-                onBack = onBack,
-                geEditablePlaylists = suspend { emptyList() },
+                state = state,
+                onTabSelected = { state = state.copy(userSelectedTab = it) },
                 fetchColors = NoColors,
             )
         }
 
-        listOf(
-            AppMediaItemFixtures.artist(),
-            AppMediaItemFixtures.album(),
-            AppMediaItemFixtures.playlist(),
-            AppMediaItemFixtures.podcast(),
-            AppMediaItemFixtures.audiobook(),
-        ).forEach {
-            onBack.reset()
-
-            state.value = ItemDetailsViewModel.State(
-                itemState = DataState.Data(it),
-                albumsState = DataState.NoData(),
-                playableItemsState = DataState.NoData(),
-            )
-
-            composeTestRule.onNode(hasContentDescription("Back")).performClick()
-            assertEquals(onBack.wasCalled, true)
+        composeTestRule.onNode(isTab(Res.string.item_tab_similar_tracks.get())).performClick()
+        composeTestRule.inScrollable("LazyVerticalGrid") {
+            onNode(hasContentDescription(similar.name, substring = true)).assertIsDisplayed()
         }
     }
+
+    @Test
+    fun `track overflow opens the lyrics and has no entry for the track itself`() {
+        val track = AppMediaItemFixtures.track(name = "Song", album = AppMediaItemFixtures.album())
+
+        composeTestRule.setInspectableContent {
+            ItemDetails(
+                state = trackState(track, lyrics = Lyrics.Plain("First line of the song")),
+                fetchColors = NoColors,
+            )
+        }
+
+        composeTestRule.onNodeWithContentDescription(Res.string.cd_more.get()).performClick()
+        composeTestRule.onNodeWithText(Res.string.action_go_to_album.get()).assertIsDisplayed()
+        composeTestRule.onNodeWithText(Res.string.action_go_to_track.get()).assertDoesNotExist()
+        composeTestRule.onNodeWithText(Res.string.action_lyrics.get()).performClick()
+
+        composeTestRule.onNodeWithText("First line of the song").assertIsDisplayed()
+    }
+
+    @Test
+    fun `track without lyrics has no lyrics entry`() {
+        val track = AppMediaItemFixtures.track(name = "Song")
+
+        composeTestRule.setInspectableContent {
+            ItemDetails(state = trackState(track), fetchColors = NoColors)
+        }
+
+        composeTestRule.onNodeWithContentDescription(Res.string.cd_more.get()).performClick()
+        composeTestRule.onNodeWithText(Res.string.action_lyrics.get()).assertDoesNotExist()
+    }
+
+    @Test
+    fun `refresh entry runs the refresh and shows progress while it runs`() {
+        var refreshes = 0
+        var refreshing by mutableStateOf(false)
+        val track = AppMediaItemFixtures.track(name = "Song")
+
+        composeTestRule.setInspectableContent {
+            ItemDetails(
+                state = trackState(track).copy(refreshingItem = refreshing),
+                fetchColors = NoColors,
+                refreshAction = RefreshItemAction.REFRESH,
+                onRefreshItem = { refreshes++ },
+            )
+        }
+
+        composeTestRule.onNodeWithContentDescription(Res.string.cd_more.get()).performClick()
+        composeTestRule.onNodeWithText(Res.string.action_refresh_item.get()).performClick()
+        assertEquals(1, refreshes)
+
+        refreshing = true
+        composeTestRule.onNodeWithContentDescription(Res.string.cd_refreshing_item.get()).assertIsDisplayed()
+        composeTestRule.onNodeWithContentDescription(Res.string.cd_more.get()).performClick()
+        composeTestRule.onNodeWithText(Res.string.action_refresh_item.get()).assertIsNotEnabled()
+    }
+
+    @Test
+    fun `unavailable item offers find on music services instead of refresh`() {
+        val track = AppMediaItemFixtures.track(name = "Song")
+
+        composeTestRule.setInspectableContent {
+            ItemDetails(
+                state = trackState(track),
+                fetchColors = NoColors,
+                refreshAction = RefreshItemAction.FIND_ON_MUSIC_SERVICES,
+            )
+        }
+
+        composeTestRule.onNodeWithContentDescription(Res.string.cd_more.get()).performClick()
+        composeTestRule.onNodeWithText(Res.string.action_find_on_music_services.get()).assertIsDisplayed()
+        composeTestRule.onNodeWithText(Res.string.action_refresh_item.get()).assertDoesNotExist()
+    }
+
+    @Test
+    fun `no refresh entry without a refresh action`() {
+        val track = AppMediaItemFixtures.track(name = "Song")
+
+        composeTestRule.setInspectableContent {
+            ItemDetails(state = trackState(track), fetchColors = NoColors)
+        }
+
+        composeTestRule.onNodeWithContentDescription(Res.string.cd_more.get()).performClick()
+        composeTestRule.onNodeWithText(Res.string.action_refresh_item.get()).assertDoesNotExist()
+        composeTestRule.onNodeWithText(Res.string.action_find_on_music_services.get()).assertDoesNotExist()
+    }
+
+    private fun trackState(
+        track: Track,
+        albumsState: DataState<List<Album>> = DataState.Data(emptyList()),
+        trackVersionsState: DataState<List<Track>> = DataState.Data(emptyList()),
+        similarTracksState: DataState<List<Track>> = DataState.NoData(),
+        lyrics: Lyrics? = null,
+    ) = ItemDetailsViewModel.State(
+        itemState = DataState.Data(track),
+        albumsState = albumsState,
+        playableItemsState = DataState.NoData(),
+        trackVersionsState = trackVersionsState,
+        similarTracksState = similarTracksState,
+        lyrics = lyrics,
+    )
 }

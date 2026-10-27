@@ -9,6 +9,7 @@ import io.music_assistant.client.data.model.client.items.Genre
 import io.music_assistant.client.data.model.client.items.MediaCollection
 import io.music_assistant.client.data.model.client.items.Playlist
 import io.music_assistant.client.data.model.client.items.Podcast
+import io.music_assistant.client.data.model.client.items.Track
 
 /**
  * The tabs an item-details screen can show. [sortContext] drives the sort chip (null = no sorting);
@@ -26,6 +27,9 @@ enum class ItemDetailsTab(
     AUDIOBOOK_CHAPTERS(null, null),
     GENRE_ARTISTS(null, MediaType.ARTIST),
     GENRE_ALBUMS(null, MediaType.ALBUM),
+    TRACK_ALBUMS(null, MediaType.ALBUM),
+    TRACK_VERSIONS(null, MediaType.TRACK),
+    SIMILAR_TRACKS(null, MediaType.TRACK),
 }
 
 fun tabsFor(item: AppMediaItem): List<ItemDetailsTab> = when (item) {
@@ -35,5 +39,23 @@ fun tabsFor(item: AppMediaItem): List<ItemDetailsTab> = when (item) {
     is Audiobook -> listOf(ItemDetailsTab.AUDIOBOOK_CHAPTERS)
     is MediaCollection -> listOf(ItemDetailsTab.COLLECTION_ITEMS)
     is Genre -> listOf(ItemDetailsTab.GENRE_ARTISTS, ItemDetailsTab.GENRE_ALBUMS)
+    is Track -> listOf(ItemDetailsTab.TRACK_ALBUMS, ItemDetailsTab.TRACK_VERSIONS, ItemDetailsTab.SIMILAR_TRACKS)
     else -> emptyList()
 }
+
+/**
+ * True for the item types that [ItemDetailsViewModel] loads (its `getItemById`); keep both in step.
+ * Gates a navigation to `ItemDetails` from a place that can show any media type.
+ */
+val AppMediaItem.opensItemDetails: Boolean
+    get() = mediaType in ITEM_DETAILS_TYPES
+
+private val ITEM_DETAILS_TYPES = setOf(
+    MediaType.ARTIST,
+    MediaType.ALBUM,
+    MediaType.PLAYLIST,
+    MediaType.PODCAST,
+    MediaType.AUDIOBOOK,
+    MediaType.GENRE,
+    MediaType.COLLECTION,
+)

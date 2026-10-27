@@ -29,8 +29,10 @@ import io.music_assistant.client.data.model.client.items.Podcast
 import io.music_assistant.client.data.model.client.items.PodcastEpisode
 import io.music_assistant.client.data.model.client.items.RecommendationFolder
 import io.music_assistant.client.data.model.client.items.Track
+import io.music_assistant.client.data.model.client.items.isAiRadioShow
 import io.music_assistant.client.data.model.client.toItemKind
 import io.music_assistant.client.data.model.server.ServerAiRadioStation
+import io.music_assistant.client.data.model.server.aiRadioStationUri
 import io.music_assistant.client.data.planLocalPlayerDispatch
 import io.music_assistant.client.data.play.PlayDispatcher
 import io.music_assistant.client.data.repository.AiRadioRepository
@@ -61,6 +63,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
@@ -176,20 +179,24 @@ object KmpHelper : KoinComponent {
         completion: (NativeArtworkResult?) -> Unit,
     ): Cancellable {
         val job = scope.launch {
-            val result = try {
-                val freshToken = artworkRepository.resolveFreshToken(urlString)
-                if (freshToken != null && cachedVersion?.invoke(freshToken) == true) {
-                    null
-                } else {
-                    artworkRepository.load(urlString).let {
-                        NativeArtworkResult(it.bytes.toNSData(), it.mimeType, it.token, it.reusable)
+            // Hashing and byte copies run off main; only [completion] runs on [scope]. The
+            // [cachedVersion] probe runs off main too: Swift backs it with a thread-safe NSCache.
+            val result = withContext(Dispatchers.Default) {
+                try {
+                    val freshToken = artworkRepository.resolveFreshToken(urlString)
+                    if (freshToken != null && cachedVersion?.invoke(freshToken) == true) {
+                        null
+                    } else {
+                        artworkRepository.load(urlString).let {
+                            NativeArtworkResult(it.bytes.toNSData(), it.mimeType, it.token, it.reusable)
+                        }
                     }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    log.w { "Artwork pre-flight failed (${e::class.simpleName ?: "Throwable"})" }
+                    null
                 }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Throwable) {
-                log.w { "Artwork pre-flight failed (${e::class.simpleName ?: "Throwable"})" }
-                null
             }
             completion(result)
         }
@@ -281,7 +288,10 @@ object KmpHelper : KoinComponent {
         val startMs = currentTimeMillis()
         log.i { "fetch[$label] start" }
         mainScope.launch {
-            val items: List<T>? = withTimeoutOrNull(FETCH_TIMEOUT_MS) { fetch() }
+            // Decode, mapping and post-processing run off main; [completion] stays on main for Swift.
+            val items: List<T>? = withTimeoutOrNull(FETCH_TIMEOUT_MS) {
+                withContext(Dispatchers.Default) { fetch() }
+            }
             val elapsed = currentTimeMillis() - startMs
             if (items == null) {
                 log.i { "fetch[$label] timeout after ${elapsed}ms" }
@@ -300,23 +310,18 @@ object KmpHelper : KoinComponent {
     }
 
     /**
-     * Starts an AI Radio station on the local player, mirroring [dispatchLocal]'s target: a
-     * CarPlay tap wants audio out of the head unit, never mirrored to a house player.
+     * Plays an AI Radio show on the local player through [dispatchLocal]: a CarPlay tap wants
+     * audio out of the head unit, never mirrored to a house player. A show is a Radio item.
      *
-     * Returns false when there is no local player to start it on, so Swift can say so instead
+     * Returns false when there is no local player to play it on, so Swift can say so instead
      * of pushing a Now Playing screen that never fills.
      */
-    fun startAiRadioStation(stationId: String): Boolean {
-        val playerId = mainDataSource.localPlayer.value?.player?.id ?: run {
-            log.w { "AI Radio: no local player — ignoring station $stationId" }
-            return false
-        }
-        mainScope.launch {
-            aiRadioRepository.start(stationId, playerId)
-                .onFailure { log.w(it) { "AI Radio: start failed for $stationId" } }
-        }
-        return true
-    }
+    fun startAiRadioStation(stationId: String): Boolean =
+        dispatchLocal(
+            mediaUris = listOf(aiRadioStationUri(stationId)),
+            option = QueueOption.REPLACE,
+            endlessMixMode = false,
+        )
 
     fun fetchRecommendations(completion: (List<AppMediaItem>?) -> Unit) {
         launchFetch("recommendations", completion) {
@@ -379,6 +384,7 @@ object KmpHelper : KoinComponent {
     fun fetchRadioStations(completion: (List<AppMediaItem>?) -> Unit) {
         launchFetch("radioStations", completion) {
             Request.RadioStation.listLibrary().fetchAllPages { mediaItemRepository.fetchMediaItems(it).getOrNull() }
+                ?.filterNot { it.isAiRadioShow }
                 ?: emptyList()
         }
     }
@@ -453,13 +459,13 @@ object KmpHelper : KoinComponent {
         completion: (List<AppMediaItem>?) -> Unit,
     ) {
         launchFetch("tracksByPlaylist:${playlist.itemId}", completion) {
-            mediaItemRepository.fetchMediaItems(
+            mediaItemRepository.fetchAllMediaItems(
                 Request.Playlist.getTracks(
                     itemId = playlist.itemId,
                     providerInstanceIdOrDomain = playlist.provider,
                     forceRefresh = null,
                 ),
-            ).getOrNull()
+            )
                 // A playlist also holds radio stations, podcast episodes and audiobooks.
                 ?.filter { it is PlayableItem }
                 ?: emptyList()
@@ -471,12 +477,12 @@ object KmpHelper : KoinComponent {
         completion: (List<AppMediaItem>?) -> Unit,
     ) {
         launchFetch("episodesByPodcast:${podcast.itemId}", completion) {
-            mediaItemRepository.fetchMediaItems(
+            mediaItemRepository.fetchAllMediaItems(
                 Request.Podcast.getEpisodes(
                     itemId = podcast.itemId,
                     providerInstanceIdOrDomain = podcast.provider,
                 ),
-            ).getOrNull()
+            )
                 ?.filterIsInstance<PodcastEpisode>()
                 ?.clientSorted(
                     SortConfig.defaultFor(SubItemContext.PODCAST_EPISODES),
@@ -502,11 +508,17 @@ object KmpHelper : KoinComponent {
     fun playOnLocalPlayer(item: AppMediaItem, option: QueueOption): Boolean =
         dispatchLocal(item, option, endlessMixMode = false)
 
-    private fun dispatchLocal(item: AppMediaItem, option: QueueOption, endlessMixMode: Boolean): Boolean {
+    private fun dispatchLocal(
+        item: AppMediaItem,
+        option: QueueOption,
+        endlessMixMode: Boolean,
+        shuffle: Boolean = false,
+    ): Boolean {
         return dispatchLocal(
             mediaUris = listOfNotNull(item.mediaUri),
             option = option,
             endlessMixMode = endlessMixMode,
+            shuffle = shuffle,
         )
     }
 
@@ -515,6 +527,7 @@ object KmpHelper : KoinComponent {
         option: QueueOption,
         endlessMixMode: Boolean,
         startItem: String? = null,
+        shuffle: Boolean = false,
     ): Boolean {
         val player = mainDataSource.localPlayer.value?.player
         val plan = planLocalPlayerDispatch(
@@ -524,6 +537,7 @@ object KmpHelper : KoinComponent {
             option = option,
             endlessMixMode = endlessMixMode,
             startItem = startItem,
+            shuffle = shuffle,
         ) ?: return false
         plan.detachFrom?.let { syncedToId ->
             log.i { "dispatchLocal($option, endlessMix=$endlessMixMode): detaching ${plan.playerId} from $syncedToId" }
@@ -554,7 +568,7 @@ object KmpHelper : KoinComponent {
     fun playCarAction(item: AppMediaItem, actionName: String): Boolean {
         val action = runCatching { DefaultClickOption.valueOf(actionName) }.getOrNull() ?: return false
         val dispatch = action.toCarDispatch()
-        return dispatchLocal(item, dispatch.option, dispatch.endlessMixMode)
+        return dispatchLocal(item, dispatch.option, dispatch.endlessMixMode, dispatch.shuffle)
     }
 
     /**
@@ -578,6 +592,7 @@ object KmpHelper : KoinComponent {
                 option = dispatch.option,
                 endlessMixMode = dispatch.endlessMixMode,
                 startItem = dispatch.startItem,
+                shuffle = dispatch.shuffle,
             )
         ) {
             action.name
@@ -605,31 +620,26 @@ object KmpHelper : KoinComponent {
     /**
      * Set the favorite flag on an [AppMediaItem]. Drives `INMediaAffinityIntent`
      * mapping from Swift: `like` ⇒ `favorite = true`, `dislike` ⇒ `favorite = false`.
-     * MA only tracks favorites as a boolean — dislike removes an existing favorite
-     * but cannot record an explicit "do not play this" signal. Adding requires a
-     * URI; removal works by id+mediaType.
+     * From server 2.11 ([MainDataSource.dislikeSupported]) a dislike is recorded as one;
+     * an older server has no dislike, so there it removes an existing favorite. Writes
+     * go through [MainDataSource.setFavorite], so the now-playing heart follows at once.
+     * A like and a dislike need a URI ([AppMediaItem.mediaUri]); removal works by
+     * id+mediaType.
      *
      * Returns `true` synchronously when the request was dispatched, `false` when
-     * we couldn't form a valid request (the only known failure mode today: an
-     * add for an item with no URI). Network outcome is fire-and-forget — Swift
-     * uses the synchronous return to avoid lying to Siri about success.
+     * the user's role lacks `library.write` or we couldn't form a valid request
+     * (a like or dislike for an item with no URI). Network outcome is fire-and-forget —
+     * Swift uses the synchronous return to avoid lying to Siri about success.
      */
     fun setFavorite(item: AppMediaItem, favorite: Boolean): Boolean {
-        if (favorite) {
-            // Prefer plain `uri`; fall back to `mediaUri`. The base class uses
-            // `uri` directly; subclasses like Genre override `mediaUri` to
-            // synthesize one when the server didn't supply it.
-            val uri = item.uri ?: item.mediaUri ?: return false
-            mainScope.launch {
-                serviceClient.sendRequest(Request.Library.addFavorite(uri))
-            }
-        } else {
-            mainScope.launch {
-                serviceClient.sendRequest(
-                    Request.Library.removeFavorite(item.itemId, item.mediaType),
-                )
-            }
+        if (!mainDataSource.grantedScopes.value.canEditLibrary) return false
+        val state = when {
+            favorite -> true
+            mainDataSource.dislikeSupported.value -> false
+            else -> null
         }
+        if (state != null && item.mediaUri == null) return false
+        mainDataSource.setFavorite(item, state)
         return true
     }
 }

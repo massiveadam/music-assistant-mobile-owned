@@ -23,6 +23,12 @@ import io.music_assistant.client.data.model.client.testPodcastEpisode
 import io.music_assistant.client.data.model.client.testRadio
 import io.music_assistant.client.data.model.client.testTrack
 import io.music_assistant.client.ui.compose.common.DataState
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -127,12 +133,13 @@ private fun streamMedia(
     artist: String? = "Artist",
     queueItemId: String? = "queue-item-1",
     imageUrl: String? = null,
+    duration: Double? = null,
 ) = PlayerMedia(
     title = title,
     artist = artist,
     album = null,
     imageUrl = imageUrl,
-    duration = null,
+    duration = duration,
     queueId = "queue-1",
     queueItemId = queueItemId,
     mediaType = MediaType.RADIO,
@@ -179,6 +186,12 @@ class NowPlayingRadioStreamMetadataTest {
         assertEquals("name", built.album)
         assertEquals("id", built.mediaItemId)
         assertEquals("https://example.invalid/song.jpg", built.artworkUrl)
+    }
+
+    @Test
+    fun aStreamReportingItsSongPresentsTheSongLength() {
+        assertEquals(430.0, radioTrack(streamMedia(duration = 430.0)).duration)
+        assertNull(radioTrack(streamMedia()).duration)
     }
 
     @Test
@@ -281,6 +294,154 @@ class PlayerDataHasFavoritableStreamTrackTest {
     @Test
     fun realTitleAtOrAboveSchema27IsFavoritable() {
         assertTrue(radioPlayerData(streamMedia()).canFavoriteCurrentlyPlaying(27))
+    }
+}
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class NowPlayingTransportFlowTest {
+    @Test
+    fun skipPublishesNewTrackBeforeAudioConfirmation() = runTest {
+        val tracker = PlayerPositionTracker()
+        val queueId = "local-queue"
+        val first = playerData(testTrack().copy(itemId = "first"), queueInfo(queueId))
+        val next = playerData(testTrack().copy(itemId = "next"), queueInfo(queueId))
+        tracker.setAnchor(queueId, 30.0, isPlaying = true)
+        val presentation = MutableStateFlow(
+            ChapterPresentation<PlayerData?>(first, chapter = null, elapsedSec = 30.0),
+        )
+        val emitted = mutableListOf<NowPlayingTransport?>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            presentation.withNowPlayingTransport(tracker).collect { emitted.add(it) }
+        }
+        runCurrent()
+        assertEquals("first", emitted.last()?.mediaItemId)
+        assertEquals(1.0, emitted.last()?.rate)
+
+        tracker.setOptimisticTrackChange(queueId, 0.0)
+        runCurrent()
+        assertEquals("first", emitted.last()?.mediaItemId)
+        assertEquals(0.0, emitted.last()?.rate)
+        assertEquals(0.0, emitted.last()?.elapsedSec)
+
+        presentation.value = ChapterPresentation(next, chapter = null, elapsedSec = 0.0)
+        runCurrent()
+        assertEquals("next", emitted.last()?.mediaItemId)
+        assertEquals(0.0, emitted.last()?.rate)
+        tracker.confirmPlaying(queueId)
+        runCurrent()
+        assertEquals("next", emitted.last()?.mediaItemId)
+        assertEquals(1.0, emitted.last()?.rate)
+        assertEquals(4, emitted.size)
+    }
+
+    @Test
+    fun presentationSwitchesQueuesAndClearsWithoutKeepingOldObservers() = runTest {
+        val tracker = PlayerPositionTracker()
+        val first = playerData(testTrack(), queueInfo("queue-a"))
+        val second = playerData(testTrack(), queueInfo("queue-b"))
+        tracker.setAnchor("queue-a", 10.0, isPlaying = false)
+        tracker.setAnchor("queue-b", 80.0, isPlaying = false)
+        val presentation = MutableStateFlow(
+            ChapterPresentation<PlayerData?>(first, chapter = null, elapsedSec = 10.0),
+        )
+        val emitted = mutableListOf<NowPlayingTransport?>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            presentation.withNowPlayingTransport(tracker).collect { emitted.add(it) }
+        }
+        runCurrent()
+        assertEquals(10.0, emitted.last()?.elapsedSec)
+
+        presentation.value = ChapterPresentation(second, chapter = null, elapsedSec = 80.0)
+        runCurrent()
+        assertEquals(80.0, emitted.last()?.elapsedSec)
+        assertEquals(2, emitted.size)
+        tracker.setAnchor("queue-a", 100.0)
+        runCurrent()
+        assertEquals(2, emitted.size)
+
+        presentation.value = ChapterPresentation(null, chapter = null, elapsedSec = null)
+        runCurrent()
+        assertNull(emitted.last())
+        assertEquals(3, emitted.size)
+        tracker.setAnchor("queue-b", 120.0)
+        runCurrent()
+        assertEquals(3, emitted.size)
+    }
+
+    @Test
+    fun presentationUpdatesPreserveDedupAndPublishPauseWithoutAnchorChange() = runTest {
+        val tracker = PlayerPositionTracker()
+        val queueId = "local-queue"
+        val data = playerData(testTrack(), queueInfo(queueId))
+        tracker.setAnchor(queueId, 30.0, isPlaying = true)
+        val presentation = MutableStateFlow(
+            ChapterPresentation<PlayerData?>(data, chapter = null, elapsedSec = 30.0),
+        )
+        val emitted = mutableListOf<NowPlayingTransport?>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            presentation.withNowPlayingTransport(tracker).collect { emitted.add(it) }
+        }
+        runCurrent()
+        assertEquals(1, emitted.size)
+
+        presentation.value = presentation.value.copy(elapsedSec = 30.5)
+        runCurrent()
+        assertEquals(1, emitted.size)
+        tracker.setAnchor(queueId, tracker.effectiveSec(queueId)!!)
+        runCurrent()
+        assertEquals(1, emitted.size)
+
+        tracker.setAnchor(queueId, 90.0)
+        runCurrent()
+        assertEquals(2, emitted.size)
+        presentation.value = presentation.value.copy(
+            value = data.copy(player = data.player.copy(isPlaying = false)),
+        )
+        runCurrent()
+        assertEquals(0.0, emitted.last()?.rate)
+        assertEquals(3, emitted.size)
+    }
+
+    @Test
+    fun audioStartPublishesRunningRateWithoutPlayerStateChange() = runTest {
+        val tracker = PlayerPositionTracker()
+        val queueId = "local-queue"
+        val data = playerData(testTrack(), queueInfo(queueId))
+        tracker.setAnchor(queueId, 30.0, isPlaying = true)
+        tracker.setOptimisticTrackChange(queueId, 0.0)
+        val presentation = MutableStateFlow(
+            ChapterPresentation<PlayerData?>(data, chapter = null, elapsedSec = 0.0),
+        )
+        val emitted = mutableListOf<NowPlayingTransport?>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            presentation.withNowPlayingTransport(tracker).collect { emitted.add(it) }
+        }
+        runCurrent()
+        assertEquals(0.0, emitted.last()?.rate)
+        assertEquals(0.0, emitted.last()?.elapsedSec)
+
+        // PlayerData already says playing; only the audio confirmation changes.
+        tracker.confirmPlaying(queueId)
+        runCurrent()
+        assertEquals(1.0, emitted.last()?.rate)
+        assertEquals(data.queueInfo?.currentItem?.track?.itemId, emitted.last()?.mediaItemId)
+        assertEquals(2, emitted.size)
+
+        // Repeated confirmation and anchors for other players must not republish.
+        tracker.confirmPlaying(queueId)
+        tracker.setAnchor("remote-queue", 100.0, isPlaying = true)
+        runCurrent()
+        assertEquals(2, emitted.size)
+
+        // A subsequent seek must freeze and release through the same path.
+        tracker.setOptimisticSeek(queueId, 45.0)
+        runCurrent()
+        assertEquals(0.0, emitted.last()?.rate)
+        assertEquals(45.0, emitted.last()?.elapsedSec)
+        tracker.confirmPlaying(queueId)
+        runCurrent()
+        assertEquals(1.0, emitted.last()?.rate)
+        assertEquals(4, emitted.size)
     }
 }
 

@@ -171,6 +171,7 @@ fun AlbumGridItem(
     onClick: (Album) -> Unit,
     onLongClick: (Album) -> Unit,
     providerIconFetcher: ProviderIconFetcher?,
+    subtitle: AlbumSubtitle = AlbumSubtitle.ARTISTS,
 ) {
     GridItem(
         modifier = modifier,
@@ -188,11 +189,17 @@ fun AlbumGridItem(
         Spacer(Modifier.height(6.dp))
         MediaItemLabels(
             title = item.displayName,
-            subtitle = item.localizedSubtitle().orEmpty(),
+            subtitle = item.subtitleText(subtitle).orEmpty(),
             isOwned = false,
-            textAlign = TextAlign.Start,
+            textAlign = TextAlign.Center,
         )
     }
+}
+
+@Composable
+private fun Album.subtitleText(subtitle: AlbumSubtitle): String? = when (subtitle) {
+    AlbumSubtitle.ARTISTS -> localizedSubtitle()
+    AlbumSubtitle.YEAR -> year?.toString()
 }
 
 @Composable
@@ -772,11 +779,12 @@ internal fun AlbumRowItem(
     onClick: (Album) -> Unit,
     onLongClick: (Album) -> Unit,
     providerIconFetcher: ProviderIconFetcher?,
+    subtitle: AlbumSubtitle = AlbumSubtitle.ARTISTS,
 ) {
     RowItem(
         modifier = modifier,
         name = item.displayName,
-        subtitle = item.localizedSubtitle(),
+        subtitle = item.subtitleText(subtitle),
         description = contentDescription(item),
         isOwned = item.hasLibraryEntry,
         prefixContent = {
