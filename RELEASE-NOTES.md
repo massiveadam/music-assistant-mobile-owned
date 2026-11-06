@@ -1,17 +1,17 @@
-# Music Assistant Owned 0.16.0-owned
+# Music Assistant Owned 0.16.1-owned
 
-Updated to official Android 0.16.0 stable with its navigation, playback dispatch,
-search history/source controls and Sendspin updates. Private saves remain separate
-from Music Assistant's shared favorites.
+Artist pages now follow slow catalog requests automatically, so albums can appear
+without a manual refresh when Apple Music finishes loading. Ready releases stay
+visible; navigation cancels followups and retries are bounded. Offline sources
+show their failure rather than being polled indefinitely.
 
-Retains Listen Later and named collections, inbox/unread, editorial/NTS shelves,
-credits, owned-first discography, source recovery and local-only offline downloads.
-Restores the album Save, Listen Later, Send, Collections, Credits and Download
-controls whose call sites were missing in the previous client release.
+Retains official Android0.16.0, private saves, album collections, inbox, credits,
+editorial/NTS, owned discography and local-only offline downloads. The shared
+server is updated to stable2.10.9, and Bandcamp uses the verified official
+connection implementation instead of our obsolete TLS workaround.
 
-The server remains stable 2.10.8. The web app receives compatible official fixes
-without adopting the newer frontend's incompatible API requirement.
+Verified with native catalog tests and the selected data/home/detail/category
+checks, signed build and upgrade over the existing signed-in app. Physical phone
+audio and Android Auto remain outside the emulator verification.
 
-Verified with native tests, the signed release build and an upgrade over the
-existing signed-in Waydroid app. Physical phone audio and Android Auto remain
-outside this emulator check.
+Search keeps pending sources eligible for eight five-second followups rather than the previous six-second window. Android preserves hyphenated queries exactly like web.

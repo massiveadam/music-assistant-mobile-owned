@@ -27,6 +27,10 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
+import kotlin.coroutines.coroutineContext
 
 class ArtistDetailsViewModel(
     private val artist: Artist,
@@ -39,17 +43,40 @@ class ArtistDetailsViewModel(
     private val _recovering = MutableStateFlow(false)
     val recovering = _recovering
 
+    private var discographyJob: Job? = null
+    private var discographyRequest = 0
+    private val _catalogLoading = MutableStateFlow(false)
+    val catalogLoading = _catalogLoading
+
     fun loadDiscography(recover: Boolean = false) {
-        viewModelScope.launch {
-            if (recover) _recovering.value = true
-            val owned = mediaItemRepository.fetchAlbumGroups(artist.itemId, artist.provider, inLibraryOnly = true)
-            owned.onSuccess { _discography.value = DataState.Data(it) }
-            val groups = mediaItemRepository.fetchAlbumGroups(artist.itemId, artist.provider, recover = recover)
-            groups.fold(
-                onSuccess = { _discography.value = DataState.Data(it) },
-                onFailure = { if (_discography.value !is DataState.Data) _discography.value = DataState.Error() },
-            )
-            _recovering.value = false
+        val request = ++discographyRequest
+        discographyJob?.cancel()
+        discographyJob = viewModelScope.launch {
+            _recovering.value = recover
+            _catalogLoading.value = false
+            try {
+                val owned = mediaItemRepository.fetchAlbumGroups(artist.itemId, artist.provider, inLibraryOnly = true)
+                coroutineContext.ensureActive()
+                owned.onSuccess { _discography.value = DataState.Data(it) }
+                var attempt = 0
+                while (true) {
+                    val groups = mediaItemRepository.fetchAlbumGroups(artist.itemId, artist.provider, recover = recover && attempt == 0)
+                    coroutineContext.ensureActive()
+                    groups.fold(
+                        onSuccess = { _discography.value = DataState.Data(it) },
+                        onFailure = { if (_discography.value !is DataState.Data) _discography.value = DataState.Error() },
+                    )
+                    if (groups.getOrNull()?.pendingSources.isNullOrEmpty() || attempt >= 8) break
+                    _catalogLoading.value = true
+                    delay(2000L + attempt * 1000L)
+                    attempt += 1
+                }
+            } finally {
+                if (request == discographyRequest) {
+                    _recovering.value = false
+                    _catalogLoading.value = false
+                }
+            }
         }
     }
 

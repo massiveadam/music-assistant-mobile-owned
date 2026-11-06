@@ -8,5 +8,6 @@ data class ArtistAlbumGroups(
     val owned: List<ServerMediaItem>,
     val all: List<ServerMediaItem>,
     @SerialName("unavailable_sources") val unavailableSources: List<String> = emptyList(),
+    @SerialName("pending_sources") val pendingSources: List<String> = emptyList(),
     @SerialName("unlinked_sources") val unlinkedSources: List<String> = emptyList(),
 )

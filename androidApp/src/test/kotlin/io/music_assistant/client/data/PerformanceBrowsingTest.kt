@@ -10,6 +10,12 @@ import org.junit.Test
 import kotlin.test.*
 
 class PerformanceBrowsingTest {
+    @Test fun `search preserves hyphenated names and punctuation`() {
+        for (query in listOf("jay-z", "AC/DC", "Sigur Rós")) {
+            val request = Request.Library.search(query, emptyList(), libraryOnly = false)
+            assertEquals(query, request.args?.get("search_query")?.jsonPrimitive?.content)
+        }
+    }
     @Test fun `search never gains the short browsing deadline`() {
         val request = Request("music/search", buildJsonObject { put("search_query", "Marina Herlop") })
         assertSame(request, performanceBrowsingRequest(request, true))

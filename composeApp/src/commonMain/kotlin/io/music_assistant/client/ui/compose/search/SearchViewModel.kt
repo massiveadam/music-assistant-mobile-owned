@@ -345,8 +345,8 @@ class SearchViewModel(
     }
 
     internal companion object {
-        const val SEARCH_FOLLOW_UP_DELAY_MS = 1500L
-        const val SEARCH_MAX_FOLLOW_UPS = 4
+        const val SEARCH_FOLLOW_UP_DELAY_MS = 5000L
+        const val SEARCH_MAX_FOLLOW_UPS = 8
 
         /**
          * Keep the server's order. It already ranks by relevance, places a library copy at

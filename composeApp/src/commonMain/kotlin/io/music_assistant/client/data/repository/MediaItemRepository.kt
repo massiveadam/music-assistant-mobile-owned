@@ -110,6 +110,7 @@ interface MediaItemRepository {
         val all: List<Album>,
         val unavailableSources: List<String>,
         val unlinkedSources: List<String> = emptyList(),
+        val pendingSources: List<String> = emptyList(),
     )
 
     val personalMusic: PersonalMusicRepository?
@@ -186,6 +187,7 @@ class ServiceClientMediaItemRepository(
                 all = factory.createList(groups.all).filterIsInstance<Album>(),
                 unavailableSources = groups.unavailableSources,
                 unlinkedSources = groups.unlinkedSources,
+                pendingSources = groups.pendingSources,
             )
         }
 

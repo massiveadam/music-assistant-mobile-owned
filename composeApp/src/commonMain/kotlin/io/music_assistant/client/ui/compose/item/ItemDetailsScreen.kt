@@ -1069,6 +1069,7 @@ private fun ArtistContent(
     val artistDetailsViewModel = koinViewModel<ArtistDetailsViewModel> { parametersOf(artist) }
     val discography by artistDetailsViewModel.discography.collectAsStateWithLifecycle()
     val recovering by artistDetailsViewModel.recovering.collectAsStateWithLifecycle()
+    val catalogLoading by artistDetailsViewModel.catalogLoading.collectAsStateWithLifecycle()
     val topTracksSection by artistDetailsViewModel.topTracks.collectAsStateWithLifecycle()
 
     NoOverscroll {
@@ -1083,7 +1084,11 @@ private fun ArtistContent(
                 }
                 when (val groups = discography) {
                     is DataState.Data -> {
-                        if (groups.data.unavailableSources.isNotEmpty() || groups.data.unlinkedSources.isNotEmpty()) {
+                        if (groups.data.pendingSources.isNotEmpty()) {
+                            Text(if (catalogLoading) "Loading catalog… Albums will appear automatically."
+                                else "The catalog is taking longer than usual. Use Refresh catalog to try again.", Modifier.padding(16.dp))
+                        }
+                        if ((groups.data.unavailableSources - groups.data.pendingSources.toSet()).isNotEmpty() || groups.data.unlinkedSources.isNotEmpty()) {
                             Text("Not all catalog sources were checked or linked. Showing available releases.", Modifier.padding(16.dp))
                         }
                         androidx.compose.runtime.key(artist.uri ?: artist.itemId) {

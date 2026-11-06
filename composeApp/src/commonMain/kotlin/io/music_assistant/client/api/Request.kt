@@ -1002,7 +1002,7 @@ data class Request @OptIn(ExperimentalUuidApi::class) constructor(
         ) = Request(
             command = APICommands.MUSIC_SEARCH,
             args = buildJsonObject {
-                put("search_query", JsonPrimitive(query.replace("-", " ")))
+                put("search_query", JsonPrimitive(query))
                 put(
                     "media_types",
                     JsonArray(mediaTypes.map { JsonPrimitive(it.serverValue) }),

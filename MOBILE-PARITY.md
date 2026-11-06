@@ -1,5 +1,23 @@
 # Mobile coverage
 
+## November 6 catalog completion and stable platform update
+
+Web and Android follow optional pending_sources from the artist album-groups API.
+Both retain visible releases, retry at increasing intervals up to eight followups,
+stop on navigation/lifecycle cancellation, and avoid polling an offline source.
+Native actual ViewModel tests cover completion, leaving the page, offline sources
+and retry bounds. Final selected app suite:119 passed; six common search followup checks passed. The original JVM test
+cleanup used a mismatched ViewModelStore method; the corrected tests cancel the
+actual ViewModel scope to model lifecycle disposal.
+
+Server2.10.9 uses official Bandcamp TLS/shared-session handling, retiring the
+obsolete connection override. Both configured Bandcamp accounts reconnect and
+source-filtered search/URI resolution pass. This shared repair reaches both
+clients. The complete standalone web2.17.359 requiresAPI102, so the verified web
+line retains API65 compatibility with stable2.10.9. Evidence and device limits:
+../../evidence/20261106-platform-update/README.md.
+
+
 ## October 27 stable server, updated clients
 
 Android 0.16.0-owned/code37 includes official android-v0.16.0. Official navigation,
@@ -130,3 +148,5 @@ Verified: 104 native tests (including badge appearance, clearing and 99+ display
 Inbox layout release 31 / 0.14.17-owned: compact 64dp album artwork/header, 48dp Open album and overflow controls, secondary actions in a menu, and icon refresh. Visible card artwork resolves through the recipient-authenticated read-only open API, without changing read/archive state. Existing account/server guards and unread observer are retained. Mobile web inbox was inspected at 320px and 390px; buttons already wrap with 44px targets and remain reachable above the player after scrolling. Evidence: ../../evidence/20261005-inbox-layout.
 
 Verified: 107 native tests passed, signed build/lint passed, and release 30 upgraded to 31 without clearing app data. Signed-in inbox remained two messages/one unread after artwork resolution and overflow-menu inspection. Both cards fit above the player at 390px and 320px with 1.3 font scale; screenshots retained. These real messages resolve to unavailable items for Adam, so artwork correctly falls back to initials. No messages were sent, opened, marked read or archived. Physical ARM64 execution remains unchecked.
+
+Search keeps pending sources eligible for eight five-second followups rather than the previous six-second window. Android preserves hyphenated queries exactly like web.

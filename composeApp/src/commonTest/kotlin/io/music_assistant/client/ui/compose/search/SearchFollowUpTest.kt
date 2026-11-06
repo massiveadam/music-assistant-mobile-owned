@@ -24,6 +24,13 @@ class SearchFollowUpTest {
     }
 
     @Test
+    fun `a source still pending beyond six seconds remains eligible`() {
+        val plan = followUpPlan(pendingApple, followUpsDone = 4)
+        assertTrue(plan.followUp)
+        assertEquals(listOf("tidal--b"), plan.visibleIncompleteSources)
+    }
+
+    @Test
     fun `after the last follow-up a pending source is reported as incomplete`() {
         val plan = followUpPlan(pendingApple, followUpsDone = SEARCH_MAX_FOLLOW_UPS)
         assertFalse(plan.followUp)
