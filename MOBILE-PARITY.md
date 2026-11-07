@@ -1,5 +1,9 @@
 # Mobile coverage
 
+## November 7 chart rows: less text, AOTY Must Hear, RYM covers — 0.16.2-owned / 39
+
+Header range/order, capture date, capture notes, "Older data" and the "No score" chip were removed; details stay in the info dialog. The `must_hear` field (default false) shows a "★ Must Hear" cover badge. Covers for RYM come from the server (Deezer / Cover Art Archive / Apple / AOTY, exact match only). Web parity: `b0c43c74a048d9bc` (source `c5a6e002`). Tests: 999 composeApp + 126 selected androidApp. Two fail, and both also fail on the unchanged 0.16.1 commit: `RefreshItemActionTest.unavailableMappingGetsFind`, and the 320dp header test, which looks for a "Refresh …" label the released code already names "Reload saved … data". Evidence: `../../evidence/20261107-chart-covers-must-hear/`.
+
 ## November 6 catalog completion and stable platform update
 
 Web and Android follow optional pending_sources from the artist album-groups API.

@@ -50,7 +50,7 @@ fun EditorialShelfContent(
             Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                 Text(source.name, fontSize = 20.sp, lineHeight = 25.sp,
                     fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box {
                         OutlinedButton(onClick = { chooseLimit = true }, modifier = Modifier.heightIn(min = 48.dp),
                             shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(horizontal = 12.dp)) {
@@ -75,24 +75,6 @@ fun EditorialShelfContent(
                     IconButton(onClick = { showDetails = true }, enabled = feed != null, modifier = Modifier.size(48.dp)) {
                         Icon(Icons.Default.Info, "About ${source.name}", Modifier.size(19.dp))
                     }
-                }
-                feed?.let { value ->
-                    val order = when (value.window?.ranking) {
-                        "critic" -> "Critic score order"; "user" -> "User score order"; else -> "Chart order"
-                    }
-                    Text(value.window?.let { "${it.start} to ${it.end} · $order" } ?: order,
-                        style = MaterialTheme.typography.bodySmall, color = muted,
-                        modifier = Modifier.padding(top = 2.dp, bottom = 12.dp))
-                    val captured = value.fetchedAt?.let {
-                        runCatching { Instant.fromEpochSeconds(it.toLong()).toString().take(10) }.getOrNull()
-                    }
-                    Text(captured?.let { "${if (value.stale) "Older capture" else "Captured"} $it." }
-                        ?: "Capture date unavailable.",
-                        style = MaterialTheme.typography.bodySmall, color = muted)
-                    (value.source.refreshNote ?: source.refreshNote)?.let { note -> Text(note,
-                        style = MaterialTheme.typography.bodySmall, color = muted, modifier = Modifier.padding(bottom = 8.dp)) }
-                    if (value.stale && value.source.refreshMode != "manual") Text("Older data. Reload checks the latest saved capture.",
-                        style = MaterialTheme.typography.bodySmall, color = muted, modifier = Modifier.padding(bottom = 8.dp))
                 }
             }
             when {
@@ -146,17 +128,20 @@ fun EditorialAlbumCard(entry: EditorialEntry, modifier: Modifier = Modifier, onF
                     // The failed request may predate a newly arrived catalog cover.
                     (state.result.request.data as? String)?.let { failedArtwork = failedArtwork + it }
                 })
+            if (entry.mustHear) {
+                // AOTY's "Must Hear" designation.
+                Surface(Modifier.align(Alignment.TopStart).padding(6.dp).testTag("editorial-must-hear:${entry.title}"),
+                    color = Color(0xFFF5C542), contentColor = Color(0xFF1A1400), shape = RoundedCornerShape(6.dp)) {
+                    Text("★ Must Hear", fontSize = 10.sp, fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp))
+                }
+            }
             Row(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(6.dp),
                 horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.Bottom) {
                 entry.scores.critic?.let { EditorialScoreBadge("Critics", it, "reviews",
                     if (entry.scores.user != null) Modifier.weight(1f) else Modifier.widthIn(max = singleBadgeWidth)) }
                 entry.scores.user?.let { EditorialScoreBadge("Users", it, "ratings",
                     if (entry.scores.critic != null) Modifier.weight(1f) else Modifier.widthIn(max = singleBadgeWidth)) }
-                if (entry.scores.critic == null && entry.scores.user == null) {
-                    Surface(color = Color.Black.copy(alpha = .85f), contentColor = Color.White, shape = RoundedCornerShape(6.dp)) {
-                        Text("No score", fontSize = 10.sp, modifier = Modifier.padding(6.dp))
-                    }
-                }
             }
         }
         Text(entry.title, fontSize = 14.sp, lineHeight = 19.sp, fontWeight = FontWeight.SemiBold,

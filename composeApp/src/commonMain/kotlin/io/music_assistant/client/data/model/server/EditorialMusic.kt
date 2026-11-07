@@ -27,6 +27,7 @@ data class EditorialEntry(
     val title: String, val artist: String, val url: String, val image: String? = null,
     @SerialName("release_date") val releaseDate: String? = null,
     val scores: EditorialScores,
+    @SerialName("must_hear") val mustHear: Boolean = false,
 )
 @Serializable
 data class EditorialWindow(

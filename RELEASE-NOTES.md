@@ -1,4 +1,8 @@
-# Music Assistant Owned 0.16.1-owned
+# Music Assistant Owned 0.16.2-owned
+
+The RYM and AOTY home rows are cleaner: no date-range, capture or "No score" text (details stay behind the info button). AOTY Must Hear albums show a gold "★ Must Hear" badge. RYM albums now show covers from open music databases where an exact match exists.
+
+## Previous release: 0.16.1-owned
 
 Artist pages now follow slow catalog requests automatically, so albums can appear
 without a manual refresh when Apple Music finishes loading. Ready releases stay

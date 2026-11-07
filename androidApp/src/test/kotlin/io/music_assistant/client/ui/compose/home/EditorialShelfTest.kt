@@ -108,4 +108,28 @@ class EditorialShelfTest {
         compose.onNodeWithContentDescription("Read review for Album").performClick()
         assertTrue(found && reviewed)
     }
+
+    @Test fun `must hear albums get a badge and unscored albums no filler`() {
+        compose.setContent {
+            AppTheme {
+                Row {
+                    EditorialAlbumCard(entry.copy(title = "Starred", mustHear = true), Modifier.width(164.dp), {}, {})
+                    EditorialAlbumCard(entry.copy(title = "Plain", scores = EditorialScores(null, null)),
+                        Modifier.width(164.dp), {}, {})
+                }
+            }
+        }
+        compose.onNodeWithTag("editorial-must-hear:Starred").assertIsDisplayed()
+        compose.onNodeWithTag("editorial-must-hear:Plain").assertDoesNotExist()
+        compose.onNodeWithText("No score").assertDoesNotExist()
+    }
+
+    @Test fun `header shows no capture or ordering text`() {
+        compose.setContent {
+            AppTheme { EditorialShelfContent(source, feed, 50, true, false, null, {}, {}, {}, {}, {}) }
+        }
+        listOf("Captured", "Older capture", "Capture date unavailable", "score order", "Chart order").forEach {
+            compose.onNodeWithText(it, substring = true).assertDoesNotExist()
+        }
+    }
 }

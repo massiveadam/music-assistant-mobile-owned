@@ -27,6 +27,11 @@ class EditorialMusicTest {
         assertEquals("critic", result.window?.ranking)
         assertNull(result.entries.single().scores.user)
     }
+    @Test fun `must hear flag decodes and defaults off for older servers`() {
+        val marked = payload(feed().toString().replace("\"user\":null}", "\"user\":null},\"must_hear\":true"))
+        assertTrue(parseEditorialFeed(marked, "aoty").entries.single().mustHear)
+        assertFalse(parseEditorialFeed(feed(), "aoty").entries.single().mustHear)
+    }
     @Test fun `unrated albums stay unrated`() { assertNull(parseEditorialFeed(feed(score = "null"), "aoty").entries.single().scores.critic) }
     @Test fun `source mismatch rejected`() { assertFailsWith<IllegalArgumentException> { parseEditorialFeed(feed(), "rym") } }
     @Test fun `out of range score rejected`() { assertFailsWith<IllegalArgumentException> { parseEditorialFeed(feed(score = "{\"value\":101,\"max\":100}"), "aoty") } }
