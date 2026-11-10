@@ -1,5 +1,21 @@
 # Mobile coverage
 
+## November 10 compatible web patches
+
+Official acd09648 dismisses the web fullscreen overlay when the CommandCenter
+opens a result/page, and 93256428 avoids a second web toast for a server playback
+error with its own reason. Native SearchScreen uses its navigation callback and
+RpcEngine emits the server reason through one error callback; these browser-only
+presentation bugs do not require a native runtime change.
+
+Ten PerformanceBrowsingTest checks and six common SearchFollowUpTest checks pass.
+The existing 0.16.2-owned/code39 release remains the APK delivery. Universal and
+ARM64 served hashes match metadata, signing continuity and the downloaded GitHub
+release are verified, and publication repeats without changes. This documentation
+commit does not replace or rebuild the released APK source 5d829c34. No physical
+phone audio or Android Auto check was needed for these web-only fixes.
+
+
 ## November 7 chart rows: less text, AOTY Must Hear, RYM covers — 0.16.2-owned / 39
 
 Header range/order, capture date, capture notes, "Older data" and the "No score" chip were removed; details stay in the info dialog. The `must_hear` field (default false) shows a "★ Must Hear" cover badge. Covers for RYM come from the server (Deezer / Cover Art Archive / Apple / AOTY, exact match only). Web parity: `b0c43c74a048d9bc` (source `c5a6e002`). Tests: 999 composeApp + 126 selected androidApp. Two fail, and both also fail on the unchanged 0.16.1 commit: `RefreshItemActionTest.unavailableMappingGetsFind`, and the 320dp header test, which looks for a "Refresh …" label the released code already names "Reload saved … data". Evidence: `../../evidence/20261107-chart-covers-must-hear/`.
